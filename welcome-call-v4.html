@@ -1,0 +1,1158 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Welcome Call – Inocrea</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+/* =============================================
+   TOKENS
+============================================= */
+:root {
+  --navy:#1A2744; --navy2:#243460; --blue:#3B5BDB; --blue-lt:#EEF2FF; --blue-bd:#93C5FD;
+  --text:#1E293B; --muted:#64748B; --border:#E2E8F0; --surface:#F8FAFC; --white:#fff;
+  --green:#16A34A; --green-lt:#F0FDF4; --green-bd:#86EFAC;
+  --orange:#D97706; --orange-lt:#FFFBEB; --orange-bd:#FCD34D;
+  --red:#DC2626; --red-lt:#FEF2F2; --red-bd:#FCA5A5;
+  --radius:10px; --shadow:0 1px 8px rgba(26,39,68,.08);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--surface);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+/* HEADER */
+.hdr{background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;padding:0 20px;height:50px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;box-shadow:0 2px 12px rgba(26,39,68,.3)}
+.hdr-title{font-size:15px;font-weight:700}
+.hdr-title span{color:#93C5FD;font-weight:400}
+.steps{display:flex;gap:0}
+.step{display:flex;align-items:center;gap:6px;padding:0 16px;height:50px;font-size:12px;font-weight:600;color:rgba(255,255,255,.4);border-right:1px solid rgba(255,255,255,.1);position:relative;cursor:default}
+.step .snum{width:20px;height:20px;border-radius:50%;border:1.5px solid currentColor;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;flex-shrink:0}
+.step.active{color:#fff}
+.step.active::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:#93C5FD}
+.step.done{color:#86EFAC}
+
+/* MAIN LAYOUT */
+.main{display:flex;flex:1;overflow:hidden}
+
+/* PDF COL */
+.pdf-col{width:45%;display:flex;flex-direction:column;background:#1e1e1e;border-right:2px solid var(--navy);flex-shrink:0;transition:width .3s}
+.pdf-col.hidden{width:0;overflow:hidden;border:none}
+.pdf-toolbar{background:#111;padding:7px 12px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.pdf-toolbar span{font-size:11px;color:#888;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px}
+.btn-sm{background:#333;color:#ccc;border:none;padding:4px 10px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit}
+.btn-sm:hover{background:#444}
+.drop-zone{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;text-align:center;cursor:pointer;border:2px dashed #444;margin:12px;border-radius:10px;transition:all .2s}
+.drop-zone:hover{border-color:#3B5BDB;background:rgba(59,91,219,.08)}
+.drop-zone.drag{border-color:#3B5BDB;background:rgba(59,91,219,.12)}
+.drop-zone .dz-icon{font-size:40px}
+.drop-zone h3{color:#ccc;font-size:15px;font-weight:600}
+.drop-zone p{color:#666;font-size:12px;line-height:1.5}
+.btn-pick{background:#3B5BDB;color:#fff;border:none;padding:9px 20px;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+.btn-pick:hover{background:#2d4bc7}
+#pdfViewer{flex:1;display:none;width:100%;border:none;background:#fff}
+#imgViewer{flex:1;display:none;width:100%;object-fit:contain;background:#2d2d2d;padding:8px}
+#fileInput{display:none}
+
+/* RIGHT COL */
+.right-col{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+
+/* =============================================
+   STEP 1 – ANALYSE
+============================================= */
+#step1{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:14px}
+
+/* LOADING STATE */
+.loading-card{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:28px;text-align:center;box-shadow:var(--shadow)}
+.loader-ring{width:44px;height:44px;border:3px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 14px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loader-steps{display:flex;flex-direction:column;gap:6px;margin-top:14px;text-align:left;max-width:340px;margin-left:auto;margin-right:auto}
+.loader-step{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);padding:6px 10px;border-radius:6px}
+.loader-step.done{color:var(--green);background:var(--green-lt)}
+.loader-step.active{color:var(--blue);background:var(--blue-lt);font-weight:600}
+.loader-step.waiting{color:var(--muted)}
+
+/* ANALYSIS RESULT CARDS */
+.analysis-header{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;box-shadow:var(--shadow);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-shrink:0}
+.analysis-header h2{font-size:15px;font-weight:700;color:var(--navy)}
+.anomaly-count{display:flex;gap:8px}
+.acount{padding:4px 10px;border-radius:99px;font-size:12px;font-weight:700}
+.acount.red{background:var(--red-lt);color:var(--red);border:1px solid var(--red-bd)}
+.acount.orange{background:var(--orange-lt);color:var(--orange);border:1px solid var(--orange-bd)}
+.acount.green{background:var(--green-lt);color:var(--green);border:1px solid var(--green-bd)}
+
+.data-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.data-field{background:var(--white);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:3px;box-shadow:var(--shadow)}
+.data-field.full{grid-column:1/-1}
+.df-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+.df-value{font-size:14px;font-weight:600;color:var(--text)}
+.df-value.empty{color:var(--red);font-style:italic;font-weight:400}
+.conf-bar{display:flex;align-items:center;gap:5px;margin-top:3px}
+.conf-dot{width:7px;height:7px;border-radius:50%}
+.conf-dot.high{background:var(--green)}
+.conf-dot.med{background:var(--orange)}
+.conf-dot.low{background:var(--red)}
+.conf-label{font-size:10px;color:var(--muted)}
+
+/* ANOMALIES */
+.anomaly-list{display:flex;flex-direction:column;gap:6px}
+.anomaly{border-radius:8px;padding:10px 13px;font-size:13px;font-weight:500;border-left:3px solid;display:flex;align-items:flex-start;gap:8px}
+.anomaly.red{background:var(--red-lt);border-color:var(--red);color:#7f1d1d}
+.anomaly.orange{background:var(--orange-lt);border-color:var(--orange);color:#78350f}
+.anomaly.green{background:var(--green-lt);border-color:var(--green);color:#14532d}
+.anomaly-icon{font-size:15px;flex-shrink:0;margin-top:1px}
+.anomaly-text{flex:1;line-height:1.45}
+.anomaly-title{font-weight:700;display:block}
+
+/* SERVICES DISPLAY */
+.svc-grid-display{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.svc-disp{border-radius:7px;padding:7px 9px;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;border:1px solid}
+.svc-disp.yes{background:var(--green-lt);border-color:var(--green-bd);color:var(--green)}
+.svc-disp.no{background:var(--surface);border-color:var(--border);color:var(--muted)}
+.svc-disp.warn{background:var(--orange-lt);border-color:var(--orange-bd);color:var(--orange)}
+
+/* SECTION CARDS */
+.section-card{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
+.sc-head{background:var(--navy);color:#fff;padding:9px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;display:flex;align-items:center;justify-content:space-between}
+.sc-body{padding:14px}
+
+/* =============================================
+   STEP 2 – CALL
+============================================= */
+#step2{flex:1;display:none;flex-direction:column;overflow:hidden}
+.call-top{background:var(--navy);color:#e2e8f0;padding:16px 22px;flex-shrink:0;max-height:42%;overflow-y:auto}
+.call-eyebrow{font-size:9px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:#93C5FD;margin-bottom:10px}
+.call-script{font-size:13px;line-height:1.8;color:#e2e8f0}
+.call-script .hl{color:#93C5FD;font-weight:600}
+.call-script .hlg{color:#86EFAC;font-weight:600}
+.call-script .hlo{color:#FCD34D;font-weight:600}
+.call-phrase{border-radius:7px;padding:10px 13px;font-size:13px;line-height:1.6;margin-top:10px;border-left:3px solid;display:none}
+.call-phrase.g{background:rgba(134,239,172,.1);border-color:#86EFAC;color:#86EFAC}
+.call-phrase.o{background:rgba(252,211,77,.07);border-color:#FCD34D;color:#FCD34D}
+.call-phrase.r{background:rgba(252,165,165,.07);border-color:#FCA5A5;color:#FCA5A5}
+.call-phrase.on{display:block}
+
+.call-bottom{flex:1;overflow-y:auto;padding:12px 16px;background:var(--surface);display:flex;flex-direction:column;gap:8px}
+.qcard{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:13px;box-shadow:var(--shadow)}
+.qcard-title{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:9px;padding-bottom:7px;border-bottom:1px solid var(--border)}
+.qlabel{font-size:13px;font-weight:600;color:var(--text);margin-bottom:7px;line-height:1.4}
+.opts{display:flex;flex-wrap:wrap;gap:5px}
+.opt{padding:6px 12px;border:1.5px solid var(--border);border-radius:7px;cursor:pointer;font-size:12px;font-weight:600;background:var(--white);color:var(--muted);transition:all .1s;user-select:none}
+.opt:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-lt)}
+.opt.sel{border-color:var(--blue);background:var(--blue-lt);color:var(--blue)}
+.opt.sel-g{border-color:var(--green);background:var(--green-lt);color:var(--green)}
+.opt.sel-r{border-color:var(--red);background:var(--red-lt);color:var(--red)}
+.opt.sel-o{border-color:var(--orange);background:var(--orange-lt);color:var(--orange)}
+.ia{border-radius:7px;padding:8px 11px;font-size:12px;font-weight:500;margin-top:7px;border-left:3px solid;display:none;line-height:1.4}
+.ia.on{display:block}
+.ia.g{background:var(--green-lt);border-color:var(--green);color:#166534}
+.ia.o{background:var(--orange-lt);border-color:var(--orange);color:#92400E}
+.ia.r{background:var(--red-lt);border-color:var(--red);color:#991B1B}
+.subq{background:var(--surface);border:1px dashed var(--border);border-radius:7px;padding:10px;margin-top:7px;display:none;flex-direction:column;gap:7px}
+.subq.on{display:flex}
+.subq label{font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted)}
+.subq input,.subq select{border:1.5px solid var(--border);border-radius:6px;padding:6px 9px;font-size:12px;font-family:inherit;outline:none;width:100%;background:var(--white);color:var(--text)}
+.subq input:focus,.subq select:focus{border-color:var(--blue)}
+.corr-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.corr-field{display:flex;flex-direction:column;gap:3px}
+.corr-field.full{grid-column:1/-1}
+.corr-field label{font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted)}
+.corr-field input{border:1.5px solid var(--border);border-radius:6px;padding:6px 9px;font-size:12px;font-family:inherit;outline:none;background:var(--white);width:100%;transition:border-color .15s}
+.corr-field input:focus{border-color:var(--blue)}
+.corr-field input.changed{border-color:var(--orange);background:var(--orange-lt)}
+
+/* CAISSE SEARCH */
+.cs{position:relative}
+.cs input{width:100%;padding:6px 9px 6px 28px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit;outline:none}
+.cs input:focus{border-color:var(--blue)}
+.cs-ico{position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:12px;pointer-events:none}
+.cs-res{max-height:160px;overflow-y:auto;border:1px solid var(--border);border-top:none;border-radius:0 0 6px 6px;background:var(--white);display:none;box-shadow:0 4px 10px rgba(0,0,0,.08)}
+.cs-item{padding:7px 10px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;color:var(--text)}
+.cs-item:last-child{border-bottom:none}
+.cs-item:hover{background:var(--blue-lt)}
+.cs-badge{font-size:10px;font-weight:700;padding:2px 6px;border-radius:99px}
+.cb-ok{background:var(--green-lt);color:var(--green)}
+.cb-w{background:var(--orange-lt);color:var(--orange)}
+.cb-no{background:var(--red-lt);color:var(--red)}
+
+/* =============================================
+   STEP 3 – RECAP
+============================================= */
+#step3{flex:1;display:none;overflow-y:auto;padding:20px}
+.status-banner{padding:12px 16px;border-radius:9px;font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px;margin-bottom:14px}
+.status-banner.g{background:var(--green-lt);color:var(--green);border:1px solid var(--green-bd)}
+.status-banner.o{background:var(--orange-lt);color:var(--orange);border:1px solid var(--orange-bd)}
+.status-banner.r{background:var(--red-lt);color:var(--red);border:1px solid var(--red-bd)}
+.rtable{width:100%;border-collapse:collapse;font-size:13px}
+.rtable td{padding:8px 12px;border-bottom:1px solid var(--border)}
+.rtable tr:last-child td{border-bottom:none}
+.rtable tr:nth-child(even) td{background:var(--surface)}
+.rtable td:first-child{font-weight:600;color:var(--muted);width:45%}
+.corr-highlight td{background:var(--orange-lt)!important}
+.corr-highlight td:first-child{color:var(--orange)}
+.corr-highlight td:last-child{color:var(--orange);font-weight:700}
+
+/* BOTTOM NAV */
+.bnav{padding:10px 18px;border-top:1px solid var(--border);background:var(--white);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;gap:8px}
+.btn{padding:9px 18px;border-radius:8px;border:none;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:5px;transition:all .12s}
+.btn-primary{background:var(--blue);color:#fff}
+.btn-primary:hover{background:#2d4bc7}
+.btn-sec{background:var(--surface);border:1.5px solid var(--border);color:var(--muted)}
+.btn-sec:hover{background:var(--border)}
+.btn-green{background:var(--green);color:#fff}
+.btn-green:hover{background:#15803d}
+.btn-orange{background:var(--orange);color:#fff}
+.hidden{display:none!important}
+
+.connect-tag{background:rgba(147,197,253,.15);color:#93C5FD;border:1px solid rgba(147,197,253,.25);border-radius:6px;padding:4px 9px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:5px;margin-bottom:7px}
+
+/* EDITABLE FIELD IN STEP1 */
+.df-edit{display:flex;align-items:center;gap:5px;margin-top:4px}
+.df-edit input{border:1.5px solid var(--border);border-radius:5px;padding:4px 7px;font-size:12px;font-family:inherit;outline:none;background:var(--surface);flex:1}
+.df-edit input:focus{border-color:var(--blue);background:#fff}
+.df-edit input.mod{border-color:var(--orange);background:var(--orange-lt)}
+
+@media(max-width:800px){.data-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="hdr">
+  <div class="hdr-title">Welcome Call <span>– Inocrea / Worldline</span></div>
+  <div class="steps">
+    <div class="step active" id="stp0"><div class="snum">1</div>Analyse contrat</div>
+    <div class="step" id="stp1"><div class="snum">2</div>Appel client</div>
+    <div class="step" id="stp2"><div class="snum">3</div>Recap &amp; PDF</div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- PDF COL -->
+  <div class="pdf-col" id="pdfCol">
+    <div class="pdf-toolbar">
+      <span id="pdfName">Aucun document charge</span>
+      <button class="btn-sm" onclick="document.getElementById('fileInput').click()">Changer</button>
+    </div>
+    <div class="drop-zone" id="dropZone"
+      ondragover="event.preventDefault();this.classList.add('drag')"
+      ondragleave="this.classList.remove('drag')"
+      ondrop="handleDrop(event)"
+      onclick="document.getElementById('fileInput').click()">
+      <div class="dz-icon">📄</div>
+      <h3>Charger le contrat</h3>
+      <p>Glissez le PDF ici<br>ou cliquez pour selectionner</p>
+      <button class="btn-pick" onclick="event.stopPropagation();document.getElementById('fileInput').click()">Selectionner le PDF</button>
+    </div>
+    <iframe id="pdfViewer" title="Contrat PDF"></iframe>
+    <img id="imgViewer" alt="Contrat image">
+    <input type="file" id="fileInput" accept=".pdf,image/*" onchange="handleFile(event)">
+  </div>
+
+  <!-- RIGHT COL -->
+  <div class="right-col">
+
+    <!-- STEP 1 -->
+    <div id="step1">
+      <div style="background:var(--blue-lt);border:1px solid var(--blue);border-radius:var(--radius);padding:20px;text-align:center">
+        <div style="font-size:32px;margin-bottom:10px">📄</div>
+        <div style="font-size:15px;font-weight:700;color:var(--navy);margin-bottom:6px">Charger le contrat signe</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:14px">Selectionnez le PDF du contrat pour demarrer l'analyse automatique.</div>
+        <button class="btn btn-primary" style="font-size:14px;padding:11px 28px" onclick="document.getElementById('fileInput').click()">📂 Selectionner le PDF</button>
+        <div style="font-size:11px;color:var(--muted);margin-top:10px">PDF ou image (scan, photo)</div>
+      </div>
+    </div>
+
+    <!-- STEP 2 -->
+    <div id="step2">
+      <div class="call-top">
+        <div class="call-eyebrow">Trame a lire au client</div>
+        <div class="call-script" id="callScript">...</div>
+        <div class="call-phrase" id="callPhrase"></div>
+      </div>
+      <div class="call-bottom" id="callBottom"></div>
+    </div>
+
+    <!-- STEP 3 -->
+    <div id="step3">
+      <div id="recapContent"></div>
+    </div>
+
+    <!-- BOTTOM NAV -->
+    <div class="bnav">
+      <div>
+        <button class="btn btn-sec hidden" id="btnBack" onclick="goBack()">← Retour</button>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sec hidden" id="btnPDF" onclick="genPDF()">🖨️ PDF</button>
+        <button class="btn btn-sec hidden" id="btnReset" onclick="if(confirm('Nouveau dossier ?'))location.reload()">🔄 Nouveau</button>
+        <button class="btn btn-primary hidden" id="btnNext" onclick="goNext()">Demarrer l'appel →</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ============================================================
+// PROXY CLOUDFLARE — API geree cote serveur
+// Pas besoin de cle API ici
+// ============================================================
+
+const INTEGRATORS = [
+  {n:"3GO Software",t:["RX"]},{n:"4Retail",t:["RX","DX"]},
+  {n:"ACA Fashion Software",t:["RX"]},{n:"AH Automation",t:["RX"]},
+  {n:"Alfazet",t:["RX"]},{n:"Becosoft",t:["RX"]},
+  {n:"Beniro Optix",t:["RX"]},{n:"Bizarre / Horecakassa",t:["RX"]},
+  {n:"Bizerba",t:["RX"]},{n:"Bolt MPlus",t:["RX","DX"]},
+  {n:"Carfac (WASP)",t:["RX"]},{n:"Centric",t:[]},
+  {n:"Cerme ICT",t:["RX","DX"]},{n:"Corilus BE",t:["RX"]},
+  {n:"Cowhills",t:["RX","DX"]},{n:"Created Software CR8ED",t:["RX"]},
+  {n:"CTAC",t:["RX"]},{n:"Datacon",t:["RX"]},
+  {n:"Deligo Vision",t:["RX"]},{n:"Diebold Nixdorf",t:["RX"]},
+  {n:"Diomedia",t:["RX"]},{n:"EasyPOS",t:["RX"]},
+  {n:"Eatcard",t:["RX","DX"]},{n:"EDDS Technology",t:["RX"]},
+  {n:"Flyx Cloud",t:["RX","DX"]},{n:"Fujiton (K-Rent)",t:["RX"]},
+  {n:"Greenisland (Kate)",t:["RX"]},{n:"Heijne B.V.",t:["RX","DX"]},
+  {n:"Initeam",t:["RX"]},{n:"Insys",t:["RX"]},
+  {n:"Intec Software",t:["RX"]},{n:"JES",t:["RX"]},
+  {n:"KassaNoord",t:["RX"]},{n:"Leza BV",t:["RX","DX"]},
+  {n:"Marti Orbak",t:["RX"]},{n:"Nedfox",t:["RX"]},
+  {n:"Neo Company",t:["RX"]},{n:"Officinall",t:["RX"]},
+  {n:"Orkhon",t:["RX"]},{n:"Pharmony",t:["RX"]},
+  {n:"QIOX",t:["RX","DX"]},{n:"R2Retail Solutions",t:["RX"]},
+  {n:"Reconneqt",t:["RX"]},{n:"Recreanet",t:["RX"]},
+  {n:"Restomax",t:["RX"]},{n:"Retail4U",t:["RX"]},
+  {n:"RetailDesk",t:["RX","DX"]},{n:"Sanders Techniek NL",t:["RX","DX"]},
+  {n:"Scanfie",t:["RX"]},{n:"SDP (Alistar)",t:["RX"]},
+  {n:"Simac",t:["RX","DX"]},{n:"Slytio",t:["RX"]},
+  {n:"SoftTouch",t:["RX","DX"]},{n:"Software Support NL",t:["RX","DX"]},
+  {n:"Straight Systems",t:["RX","DX"]},{n:"TCOG",t:["RX"]},
+  {n:"Terminal Session",t:["RX"]},{n:"Tilroy",t:["RX"]},
+  {n:"Toshiba",t:["RX"]},{n:"Twelve",t:["RX"]},
+  {n:"Valk Solutions",t:["RX","DX"]},{n:"Van Hessen",t:["RX"]},
+  {n:"Vendit",t:["RX","DX"]},{n:"Verdesoft",t:["RX"]},
+  {n:"VetsWare",t:["RX"]},{n:"Vintia (Gantner)",t:["RX","DX"]},
+  {n:"Winfakt BV",t:["RX"]},{n:"Xaris",t:["RX","DX"]},
+  {n:"Yina Solutions",t:["RX","DX"]},{n:"Your POS",t:["RX","DX"]},
+  {n:"Zorgi",t:["RX"]}
+];
+
+// ============================================================
+// STATE
+// ============================================================
+let phase = 0;
+let D = {}; // extracted data
+let ANOMALIES = [];
+let ACTIONS = [];
+let fileObj = null;
+
+// ============================================================
+// FILE LOADING
+// ============================================================
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('dropZone').classList.remove('drag');
+  const f = e.dataTransfer.files[0];
+  if (f) loadContract(f);
+}
+function handleFile(e) {
+  const f = e.target.files[0];
+  if (f) loadContract(f);
+}
+
+function loadContract(file) {
+  fileObj = file;
+  document.getElementById('pdfName').textContent = file.name;
+  document.getElementById('dropZone').style.display = 'none';
+
+  if (file.type === 'application/pdf') {
+    const url = URL.createObjectURL(file);
+    const v = document.getElementById('pdfViewer');
+    v.src = url;
+    v.style.display = 'block';
+  } else if (file.type.startsWith('image/')) {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const v = document.getElementById('imgViewer');
+      v.src = ev.target.result;
+      v.style.display = 'block';
+    };
+    reader.readAsDataURL(file);
+  }
+  startAnalysis(file);
+}
+
+// ============================================================
+// STEP 1 – ANALYSIS
+// ============================================================
+function startAnalysis(file) {
+  const s1 = document.getElementById('step1');
+  s1.innerHTML = buildLoadingHTML();
+
+  const reader = new FileReader();
+  reader.onload = async ev => {
+    animateLoader(0);
+    const b64 = ev.target.result.split(',')[1];
+    const mime = file.type.startsWith('image/') ? file.type : 'application/pdf';
+    try {
+      animateLoader(1);
+      const result = await analyzeContract(b64, mime);
+      animateLoader(2);
+      await new Promise(r => setTimeout(r, 400));
+      animateLoader(3);
+      await new Promise(r => setTimeout(r, 300));
+      D = result;
+      ANOMALIES = detectAnomalies(result);
+      renderAnalysis();
+    } catch(err) {
+      console.error(err);
+      renderAnalysisError(err.message);
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+function buildLoadingHTML() {
+  return `
+    <div class="loading-card">
+      <div class="loader-ring"></div>
+      <div style="font-size:14px;font-weight:700;color:var(--navy)">Analyse du contrat en cours...</div>
+      <div class="loader-steps">
+        <div class="loader-step active" id="ls0">📄 Lecture du document</div>
+        <div class="loader-step waiting" id="ls1">🔍 Extraction des informations</div>
+        <div class="loader-step waiting" id="ls2">⚡ Detection des anomalies</div>
+        <div class="loader-step waiting" id="ls3">✅ Finalisation</div>
+      </div>
+    </div>`;
+}
+
+function animateLoader(step) {
+  for (let i = 0; i < 4; i++) {
+    const el = document.getElementById('ls' + i);
+    if (!el) continue;
+    if (i < step) el.className = 'loader-step done';
+    else if (i === step) el.className = 'loader-step active';
+    else el.className = 'loader-step waiting';
+  }
+}
+
+async function analyzeContract(b64, mime) {
+  const isImg = mime.startsWith('image/');
+  const contentItem = isImg
+    ? {type:'image', source:{type:'base64', media_type:mime, data:b64}}
+    : {type:'document', source:{type:'base64', media_type:'application/pdf', data:b64}};
+
+  const prompt = `Tu es un expert en analyse de contrats de terminaux de paiement Worldline/Inocrea.
+Analyse ce bon de commande et retourne UNIQUEMENT un JSON valide sans markdown.
+
+Extrais toutes les informations et evalue la confiance: "high"=clairement lisible, "med"=partiellement lisible, "low"=illisible/absent.
+
+JSON a retourner:
+{
+  "societe": {"v":"","c":"high"},
+  "bce": {"v":"","c":"high"},
+  "adresse": {"v":"","c":"high"},
+  "email": {"v":"","c":"high"},
+  "tel": {"v":"","c":"high"},
+  "contact": {"v":"","c":"high"},
+  "peppol": {"v":"","c":"high"},
+  "iban": {"v":"","c":"high"},
+  "commercial": {"v":"","c":"high"},
+  "modele": {"v":"RX5000|DX8000|Yomani|MarketPay PAX A8900|MarketPay PAX A8500|Autre","c":"high"},
+  "connect": {"v":"WiFi|4G|Ethernet","c":"high"},
+  "nb": {"v":1,"c":"high"},
+  "kit": {"v":"start|pro|aucun","c":"high"},
+  "dx_ref": {"v":"C01602|C01615|autre|aucun","c":"high"},
+  "caisse": {"v":"","c":"high"},
+  "location_type": {"v":"Grenke|Inocrea|achat|aucun","c":"high"},
+  "loyer_ttc": {"v":"","c":"high"},
+  "duree_mois": {"v":"","c":"high"},
+  "svc_cc": "oui|non|nc",
+  "svc_cr": "oui|non|nc",
+  "svc_ores": "oui|non|nc",
+  "svc_barra": "oui|non|nc",
+  "svc_eid": "oui|non|nc",
+  "svc_pad": "oui|non|nc",
+  "svc_dcc": "oui|non|nc",
+  "svc_backup": "oui|non|nc",
+  "signature_presente": true,
+  "iban_visible": true,
+  "peppol_visible": true,
+  "notes_contrat": ""
+}`;
+
+  const resp = await fetch('https://quiet-bonus-454e.olivierdubost.workers.dev/', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: 'claude-opus-4-5',
+      max_tokens: 1500,
+      system: 'Tu analyses des contrats de terminaux de paiement. Reponds UNIQUEMENT en JSON valide, sans markdown, sans texte avant ou apres.',
+      messages: [{role:'user', content:[contentItem, {type:'text', text:prompt}]}]
+    })
+  });
+
+  if (!resp.ok) {
+    const e = await resp.json().catch(()=>({}));
+    if (resp.status === 401) throw new Error('CLE_API_INVALIDE');
+    throw new Error('API_ERROR_' + resp.status + ': ' + (e?.error?.message||''));
+  }
+  const data = await resp.json();
+  const txt = (data.content||[]).map(b=>b.text||'').join('').trim()
+    .replace(/^```json\s*/,'').replace(/^```\s*/,'').replace(/\s*```$/,'');
+  return JSON.parse(txt);
+}
+
+// ============================================================
+// ANOMALY DETECTION
+// ============================================================
+function detectAnomalies(d) {
+  const an = [];
+  const add = (sev, title, desc) => an.push({sev, title, desc});
+
+  // IBAN
+  if (!d.iban?.v || d.iban.v.trim() === '') add('red', 'IBAN manquant', 'Le numero IBAN est absent du contrat. Indispensable pour les prelevement.');
+  else if (d.iban.c === 'low') add('orange', 'IBAN illisible', 'Le numero IBAN est present mais difficile a lire. A verifier.');
+
+  // Peppol ID
+  if (!d.peppol?.v || d.peppol.v.trim() === '') add('orange', 'Peppol ID manquant', 'Le Peppol ID n\'est pas renseigne dans le contrat.');
+
+  // Signature
+  if (!d.signature_presente) add('red', 'Signature absente', 'Le contrat ne semble pas signe par le client.');
+
+  // Kit Pro/Start (DX8000)
+  if (d.modele?.v === 'DX8000') {
+    if (!d.kit?.v || d.kit.v === 'aucun') add('red', 'Kit non selectionne (DX8000)', 'Pour le DX8000, le Kit Start ou Kit Pro doit imperativement etre coche.');
+    if (d.dx_ref?.v === 'C01615') add('red', 'Reference C01615 interdite', 'Le modele C01615 n\'est pas autorise. Seul le C01602 est valide pour le DX8000.');
+  }
+
+  // Email
+  if (!d.email?.v || d.email.v.trim() === '') add('orange', 'Email client manquant', 'L\'adresse email n\'est pas renseignee. Necessaire pour les envois automatiques.');
+  else if (!d.email.v.includes('@')) add('red', 'Email invalide', 'L\'adresse email semble incorrecte : ' + d.email.v);
+
+  // Connectivite
+  if (!d.connect?.v || d.connect.v.trim() === '') add('red', 'Connectivite non cochee', 'WiFi ou 4G doit etre selectionne dans le contrat.');
+
+  // Modele
+  if (!d.modele?.v || d.modele.v.trim() === '' || d.modele.v === 'Autre') add('orange', 'Modele de terminal incertain', 'Le modele de terminal n\'est pas clairement identifie.');
+
+  // MarketPay avec services incompatibles
+  if (d.modele?.v && d.modele.v.startsWith('MarketPay')) {
+    if (d.svc_cr === 'oui') add('red', 'MarketPay: cheques-repas incompatibles', 'Le MarketPay ne supporte pas les cheques-repas. Le contrat doit etre corrige.');
+    if (d.svc_ores === 'oui') add('red', 'MarketPay: ORES incompatible', 'Le MarketPay ne supporte pas ORES.');
+    if (d.svc_barra === 'oui') add('red', 'MarketPay: Barracuda incompatible', 'Le MarketPay ne supporte pas Barracuda.');
+    if (d.svc_eid === 'oui') add('red', 'MarketPay: Lecteur ID incompatible', 'Le MarketPay ne supporte pas le lecteur de carte d\'identite.');
+    if (d.svc_pad === 'oui') add('red', 'MarketPay: Paiement distance incompatible', 'Le MarketPay ne supporte pas le paiement a distance.');
+  }
+
+  // RX5000 avec caisse
+  if (d.modele?.v === 'RX5000' && d.caisse?.v && d.caisse.v.trim() !== '') {
+    add('orange', 'RX5000: systeme de caisse indique', 'Le RX5000 n\'est pas prevu pour etre connecte a un systeme de caisse. A verifier avec le client.');
+  }
+
+  // DX8000 sans caisse
+  if (d.modele?.v === 'DX8000' && (!d.caisse?.v || d.caisse.v.trim() === '')) {
+    add('orange', 'DX8000: systeme de caisse non renseigne', 'Le DX8000 necessite un systeme de caisse. Le logiciel n\'est pas indique au contrat.');
+  }
+
+  // BCE
+  if (!d.bce?.v || d.bce.v.trim() === '') add('orange', 'Numero BCE / TVA manquant', 'Le numero d\'entreprise n\'est pas renseigne.');
+
+  // Societe
+  if (!d.societe?.v || d.societe.v.trim() === '') add('red', 'Nom societe manquant', 'Le nom de la societe n\'est pas lisible dans le contrat.');
+
+  return an;
+}
+
+// ============================================================
+// RENDER ANALYSIS
+// ============================================================
+function renderAnalysis() {
+  const redCount = ANOMALIES.filter(a=>a.sev==='red').length;
+  const orangeCount = ANOMALIES.filter(a=>a.sev==='orange').length;
+  const okCount = ANOMALIES.filter(a=>a.sev==='green').length;
+
+  const svcLabels = {svc_cc:'Cartes credit',svc_cr:'Cheques-repas',svc_ores:'ORES',svc_barra:'Barracuda',svc_eid:'Lecteur ID',svc_pad:'Paiem. distance',svc_dcc:'DCC',svc_backup:'Backup mode'};
+
+  let svcHtml = '<div class="svc-grid-display">';
+  Object.entries(svcLabels).forEach(([k, lbl]) => {
+    const val = D[k] || 'nc';
+    const cls = val==='oui' ? 'yes' : val==='non' ? 'no' : 'warn';
+    const icon = val==='oui' ? '✅' : val==='non' ? '—' : '?';
+    svcHtml += `<div class="svc-disp ${cls}">${icon} ${lbl}</div>`;
+  });
+  svcHtml += '</div>';
+
+  const confBadge = (c) => `<div class="conf-bar"><div class="conf-dot ${c||'low'}"></div><div class="conf-label">${c==='high'?'Sur':'c'==='med'?'A verifier':'Incertain'}</div></div>`;
+
+  const field = (label, key, full=false) => {
+    const obj = D[key] || {v:'', c:'low'};
+    const val = obj.v || '';
+    const conf = obj.c || 'low';
+    const isEmpty = !val.trim();
+    return `<div class="data-field${full?' full':''}">
+      <div class="df-label">${label}</div>
+      <div class="df-value${isEmpty?' empty':''}">${isEmpty?'Non renseigne':val}</div>
+      <div class="conf-bar"><div class="conf-dot ${conf}"></div><div class="conf-label">${conf==='high'?'Sur':conf==='med'?'A verifier':'Incertain'}</div></div>
+      <div class="df-edit"><input type="text" id="edit_${key}" value="${val}" placeholder="Corriger..." oninput="markEdit(this,'${key}')"></div>
+    </div>`;
+  };
+
+  const anomalyHtml = ANOMALIES.length === 0
+    ? '<div class="anomaly green"><div class="anomaly-icon">✅</div><div class="anomaly-text"><span class="anomaly-title">Aucune anomalie detectee</span>Le contrat semble complet et conforme.</div></div>'
+    : ANOMALIES.map(a => `<div class="anomaly ${a.sev}"><div class="anomaly-icon">${a.sev==='red'?'🚫':a.sev==='orange'?'⚠️':'✅'}</div><div class="anomaly-text"><span class="anomaly-title">${a.title}</span>${a.desc}</div></div>`).join('');
+
+  document.getElementById('step1').innerHTML = `
+    <div class="analysis-header">
+      <div>
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Analyse terminee</div>
+        <h2>${D.societe?.v || 'Societe inconnue'}</h2>
+      </div>
+      <div class="anomaly-count">
+        ${redCount>0?`<div class="acount red">🚫 ${redCount} bloquant${redCount>1?'s':''}</div>`:''}
+        ${orangeCount>0?`<div class="acount orange">⚠️ ${orangeCount} a verifier</div>`:''}
+        ${redCount===0&&orangeCount===0?'<div class="acount green">✅ Conforme</div>':''}
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="sc-head">Informations client <span style="font-size:10px;font-weight:400;opacity:.7">Modifiez si necessaire</span></div>
+      <div class="sc-body">
+        <div class="data-grid">
+          ${field('Nom de la societe','societe')}
+          ${field('BCE / TVA','bce')}
+          ${field('Adresse','adresse',true)}
+          ${field('Email','email')}
+          ${field('Telephone / GSM','tel')}
+          ${field('Personne contact','contact')}
+          ${field('Peppol ID','peppol')}
+          ${field('IBAN','iban',true)}
+        </div>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="sc-head">Terminal &amp; contrat</div>
+      <div class="sc-body">
+        <div class="data-grid">
+          ${field('Modele de terminal','modele')}
+          ${field('Connectivite','connect')}
+          ${field('Nombre de terminaux','nb')}
+          ${field('Kit (Start/Pro)','kit')}
+          ${field('Reference DX (si DX8000)','dx_ref')}
+          ${field('Systeme de caisse','caisse')}
+          ${field('Type de location','location_type')}
+          ${field('Loyer TTC','loyer_ttc')}
+          ${field('Duree (mois)','duree_mois')}
+          ${field('Commercial','commercial')}
+        </div>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="sc-head">Services contractuels</div>
+      <div class="sc-body">${svcHtml}</div>
+    </div>
+
+    <div class="section-card">
+      <div class="sc-head">Anomalies detectees</div>
+      <div class="sc-body">
+        <div class="anomaly-list">${anomalyHtml}</div>
+      </div>
+    </div>
+
+    ${D.notes_contrat ? `<div class="section-card">
+      <div class="sc-head">Notes du contrat</div>
+      <div class="sc-body" style="font-size:13px;color:var(--text);line-height:1.6">${D.notes_contrat}</div>
+    </div>` : ''}
+  `;
+
+  document.getElementById('btnNext').classList.remove('hidden');
+}
+
+function renderAnalysisError(msg) {
+  const isKeyError = msg.includes('CLE_API_INVALIDE') || msg.includes('401');
+  document.getElementById('step1').innerHTML = `
+    <div class="section-card">
+      <div class="sc-head" style="background:var(--red)">Erreur d'analyse</div>
+      <div class="sc-body">
+        <div class="anomaly red" style="margin-bottom:12px">
+          <div class="anomaly-icon">🚫</div>
+          <div class="anomaly-text">
+            <span class="anomaly-title">${isKeyError ? 'Cle API invalide ou manquante' : 'Erreur lors de l\'analyse'}</span>
+            ${isKeyError
+              ? 'Verifiez que la cle API est correctement inseree dans le fichier HTML (cherchez YOUR_API_KEY_HERE).'
+              : msg}
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">Reessayer avec un autre fichier</button>
+      </div>
+    </div>`;
+}
+
+function markEdit(inp, key) {
+  const original = D[key]?.v || '';
+  if (inp.value.trim() !== original) {
+    inp.classList.add('mod');
+    D[key] = {v: inp.value.trim(), c: 'high', edited: true};
+  } else {
+    inp.classList.remove('mod');
+    D[key] = {v: inp.value.trim(), c: D[key]?.c || 'high'};
+  }
+}
+
+// ============================================================
+// STEP 2 – CALL
+// ============================================================
+function buildCallScript() {
+  const mod = D.modele?.v || '';
+  const con = D.connect?.v || '?';
+  const nb = D.nb?.v || '1';
+  const com = D.commercial?.v || 'notre conseiller';
+  const svc = [];
+  if (D.svc_cc==='oui') svc.push('cartes de credit');
+  if (D.svc_cr==='oui') svc.push('cheques-repas');
+  if (D.svc_ores==='oui') svc.push('ORES');
+  if (D.svc_barra==='oui') svc.push('Barracuda');
+  if (D.svc_eid==='oui') svc.push('lecteur carte identite');
+  if (D.svc_pad==='oui') svc.push('paiement a distance');
+
+  let modelNote = '';
+  if (mod==='RX5000') modelNote = ' Ce terminal integre l\'impression des tickets directement.';
+  if (mod==='DX8000') modelNote = ' Ce terminal est connecte a votre systeme de caisse.';
+  if (mod.startsWith('MarketPay')) modelNote = ' Ce terminal accepte Bancontact, Visa et Mastercard.';
+
+  document.getElementById('callScript').innerHTML =
+    'Bonjour Monsieur / Madame,<br><br>' +
+    'Je suis du service administratif d\'<span class="hl">Inocrea</span>, je vous appelle suite au contrat signe avec <span class="hl">' + com + '</span>.<br><br>' +
+    'Je vais simplement verifier avec vous que tout est correct avant l\'installation — cela prend <span class="hl">2 a 3 minutes</span>.<br><br>' +
+    'Selon votre contrat, vous avez commande <span class="hlg">' + nb + ' terminal' + (nb>1?'x':'') + ' ' + mod + '</span> en connectivite <span class="hlg">' + con + '</span>.' + modelNote + '<br>' +
+    (svc.length ? '<br>Services inclus : <span class="hlg">' + svc.join(', ') + '</span>.' : '<br>Pas de services additionnels.') +
+    '<br><br><strong>Est-ce que tout cela correspond bien a votre demande ?</strong>';
+}
+
+function buildCallQuestions() {
+  const cb = document.getElementById('callBottom');
+  cb.innerHTML = '';
+  const mod = D.modele?.v || '';
+  const con = D.connect?.v || '';
+
+  // CORRECTIONS CLIENT
+  addQ(cb, 'Corrections informations client',
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:9px">Laissez vide si correct. Remplissez uniquement si le client signale une erreur.</div>' +
+    '<div class="corr-grid">' +
+    '<div class="corr-field"><label>Societe</label><input type="text" id="corr_soc" placeholder="Correction..." oninput="onCorr(this,\'soc\')"></div>' +
+    '<div class="corr-field"><label>BCE / TVA</label><input type="text" id="corr_bce" placeholder="Correction..." oninput="onCorr(this,\'bce\')"></div>' +
+    '<div class="corr-field full"><label>Adresse</label><input type="text" id="corr_adr" placeholder="Correction..." oninput="onCorr(this,\'adr\')"></div>' +
+    '<div class="corr-field"><label>Email</label><input type="text" id="corr_email" placeholder="Correction..." oninput="onCorr(this,\'email\')"></div>' +
+    '<div class="corr-field"><label>Telephone</label><input type="text" id="corr_tel" placeholder="Correction..." oninput="onCorr(this,\'tel\')"></div>' +
+    '</div>' +
+    '<div class="ia o" id="ia_corr" style="margin-top:8px">Corrections a apporter dans le dossier.</div>'
+  );
+
+  // CONNECTIVITE
+  addQ(cb, 'Connectivite',
+    '<div class="connect-tag">Contrat : ' + con + '</div>' +
+    '<div class="qlabel">Le client confirme la connectivite <strong>' + con + '</strong> ?</div>' +
+    '<div class="opts">' +
+    '<div class="opt" onclick="selOpt(this,\'con\',\'ok\');phrase(\'g\',\'Connectivite ' + con + ' confirmee.\')">Oui, confirmee</div>' +
+    '<div class="opt" onclick="selOpt(this,\'con\',\'wifi\');onConnect(\'WiFi\')">Non — veut WiFi</div>' +
+    '<div class="opt" onclick="selOpt(this,\'con\',\'4g\');onConnect(\'4G\')">Non — veut 4G</div>' +
+    '</div>' +
+    '<div class="ia" id="ia_con"></div>'
+  );
+
+  // QUESTIONS SELON MODELE
+  if (mod==='RX5000') buildRX(cb);
+  else if (mod==='DX8000') buildDX(cb);
+  else if (mod==='Yomani') buildYomani(cb);
+  else if (mod.startsWith('MarketPay')) buildMP(cb);
+
+  // CHEQUES REPAS
+  if (D.svc_cr==='oui' && !mod.startsWith('MarketPay')) buildCR(cb);
+
+  // CARTES CREDIT
+  if (D.svc_cc==='oui') buildCC(cb);
+}
+
+function addQ(parent, title, html) {
+  const d = document.createElement('div');
+  d.className = 'qcard';
+  d.innerHTML = '<div class="qcard-title">' + title + '</div>' + html;
+  parent.appendChild(d);
+}
+
+function selOpt(el, k, v) {
+  el.closest('.opts').querySelectorAll('.opt').forEach(o => o.className='opt');
+  el.classList.add('sel');
+}
+
+function showSub(id) { const e=document.getElementById(id); if(e) e.classList.add('on'); }
+function setIA(id, t, msg) { const e=document.getElementById(id); if(e){e.className='ia '+t+' on';e.textContent=msg;} }
+function phrase(t, msg) { const b=document.getElementById('callPhrase'); b.className='call-phrase '+t+' on'; b.textContent=msg; }
+function addAction(t, msg) { if(!ACTIONS.find(a=>a.msg===msg)) ACTIONS.push({t,msg}); }
+
+function onCorr(inp, key) {
+  const hasVal = inp.value.trim().length > 0;
+  inp.classList.toggle('changed', hasVal);
+  const anyFilled = ['corr_soc','corr_bce','corr_adr','corr_email','corr_tel']
+    .some(id => { const e=document.getElementById(id); return e&&e.value.trim(); });
+  const ia = document.getElementById('ia_corr');
+  if (ia) ia.classList.toggle('on', anyFilled);
+  if (hasVal) {
+    const labels = {soc:'Societe',bce:'BCE/TVA',adr:'Adresse',email:'Email',tel:'Telephone'};
+    const msg = 'Corriger ' + labels[key] + ' : ' + inp.value.trim();
+    const idx = ACTIONS.findIndex(a => a.msg.startsWith('Corriger '+labels[key]));
+    if (idx>=0) ACTIONS[idx].msg = msg; else addAction('o', msg);
+  }
+}
+
+function onConnect(to) {
+  const from = D.connect?.v || '?';
+  if (to !== from) {
+    if (to === '4G') {
+      setIA('ia_con','o','Modification admin : passer en 4G (+6 euro/mois). Renvoyer contrat corrige.');
+      phrase('o','Pas de souci, la 4G implique un abonnement de 6 euro supplementaires par mois. Nous allons corriger le contrat et vous renvoyer une version.');
+      addAction('o','Modifier connectivite ' + from + ' vers 4G (+6 euro/mois)');
+    } else {
+      setIA('ia_con','o','Modification admin : passer en WiFi. Renvoyer contrat corrige.');
+      phrase('o','Pas de souci, nous allons corriger le contrat en WiFi et vous renvoyer une version corrigee.');
+      addAction('o','Modifier connectivite ' + from + ' vers WiFi');
+    }
+  } else {
+    setIA('ia_con','g','Connectivite confirmee.');
+  }
+}
+
+function buildRX(cb) {
+  addQ(cb, 'Systeme de caisse — RX5000',
+    '<div class="qlabel">Le client souhaite connecter a un systeme de caisse ?</div>' +
+    '<div class="opts">' +
+    '<div class="opt" onclick="selOpt(this,\'rx_c\',\'non\');phrase(\'g\',\'Aucune caisse — parfait pour ce modele.\')">Non, pas de caisse</div>' +
+    '<div class="opt" onclick="selOpt(this,\'rx_c\',\'oui\');showSub(\'sq_rxc\')">Oui, il en a une</div>' +
+    '</div>' +
+    '<div class="subq" id="sq_rxc">' +
+    '<label>Rechercher la caisse</label>' +
+    '<div class="cs"><span class="cs-ico">🔍</span><input type="text" id="rx_inp" placeholder="Tapez le nom..." oninput="searchC(this,\'rx\',\'RX\')"></div>' +
+    '<div class="cs-res" id="rx_res"></div>' +
+    '<div class="ia" id="ia_rxc"></div>' +
+    '</div>' +
+    '<div class="ia" id="ia_rx"></div>'
+  );
+}
+
+function buildDX(cb) {
+  addQ(cb, 'Systeme de caisse — DX8000',
+    '<div class="qlabel">Le client confirme son systeme de caisse ?</div>' +
+    (D.caisse?.v ? '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">Caisse indiquee au contrat : <strong>' + D.caisse.v + '</strong></div>' : '') +
+    '<div class="opts">' +
+    '<div class="opt" onclick="selOpt(this,\'dx_c\',\'oui\');showSub(\'sq_dxc\')">Oui, confirme</div>' +
+    '<div class="opt" onclick="selOpt(this,\'dx_c\',\'autre\');showSub(\'sq_dxc\')">Autre logiciel</div>' +
+    '<div class="opt" onclick="selOpt(this,\'dx_c\',\'non\');onDXNone()">Non, pas de caisse</div>' +
+    '</div>' +
+    '<div class="subq" id="sq_dxc">' +
+    '<label>Rechercher / confirmer la caisse</label>' +
+    '<div class="cs"><span class="cs-ico">🔍</span><input type="text" id="dx_inp" placeholder="Tapez le nom..." oninput="searchC(this,\'dx\',\'DX\')" value="' + (D.caisse?.v||'') + '"></div>' +
+    '<div class="cs-res" id="dx_res"></div>' +
+    '<div class="ia" id="ia_dxc"></div>' +
+    '</div>' +
+    '<div class="ia" id="ia_dx"></div>'
+  );
+}
+function onDXNone() {
+  setIA('ia_dx','o','Modification admin : DX8000 sans caisse, envisager RX5000.');
+  phrase('o','Dans ce cas le DX8000 n\'est peut-etre pas le plus adapte. Nous allons verifier et vous proposer la meilleure solution.');
+  addAction('o','Verifier DX8000 > RX5000 (client sans caisse)');
+}
+
+function buildYomani(cb) {
+  const svcs = [
+    ['yo_cr','Cheques-repas',D.svc_cr==='oui'],
+    ['yo_ores','ORES',D.svc_ores==='oui'],
+    ['yo_barra','Barracuda',D.svc_barra==='oui'],
+    ['yo_eid','Lecteur carte identite',D.svc_eid==='oui'],
+    ['yo_pad','Paiement a distance',D.svc_pad==='oui']
+  ];
+  let html = '';
+  svcs.forEach(s => {
+    const badge = s[2]
+      ? '<span style="font-size:10px;padding:2px 5px;border-radius:4px;background:var(--green-lt);color:var(--green);margin-left:5px">au contrat</span>'
+      : '<span style="font-size:10px;padding:2px 5px;border-radius:4px;background:var(--red-lt);color:var(--red);margin-left:5px">pas au contrat</span>';
+    html += '<div style="margin-bottom:9px;padding-bottom:9px;border-bottom:1px solid var(--border)">' +
+      '<div class="qlabel" style="font-size:12px">' + s[1] + badge + '</div>' +
+      '<div class="opts">' +
+      '<div class="opt" onclick="selOpt(this,\'' + s[0] + '\',\'non\')">Non</div>' +
+      '<div class="opt" onclick="selOpt(this,\'' + s[0] + '\',\'oui\');onYo(\'' + s[0] + '\',\'' + s[1] + '\',' + s[2] + ')">Oui</div>' +
+      '</div><div class="ia" id="ia_' + s[0] + '"></div></div>';
+  });
+  addQ(cb, 'Services Yomani', html);
+}
+function onYo(key, label, inC) {
+  if (!inC) {
+    setIA('ia_'+key,'o','Ajout "'+label+'" au contrat — renvoyer version corrigee.');
+    phrase('o','Pas de souci, nous allons ajouter '+label+' a votre contrat et vous renvoyer une version corrigee.');
+    addAction('o','Ajouter au contrat : '+label);
+  } else {
+    setIA('ia_'+key,'g','Service confirme.');
+  }
+}
+
+function buildMP(cb) {
+  const svcs = [['mp_cr','Cheques-repas'],['mp_ores','ORES'],['mp_barra','Barracuda'],['mp_eid','Lecteur ID'],['mp_cai','Connexion caisse'],['mp_pad','Paiement distance']];
+  let html = '<div class="ia r on" style="margin-bottom:9px">Ce terminal ne supporte PAS ces services. Verifiez que le client n\'en a pas besoin.</div>';
+  svcs.forEach(s => {
+    html += '<div style="margin-bottom:7px"><div class="qlabel" style="font-size:12px">' + s[1] + ' ?</div>' +
+      '<div class="opts"><div class="opt" onclick="selOpt(this,\'' + s[0] + '\',\'non\')">Non</div>' +
+      '<div class="opt" onclick="selOpt(this,\'' + s[0] + '\',\'oui\');onMP(\'' + s[1] + '\')">Oui</div>' +
+      '</div></div>';
+  });
+  html += '<div class="ia" id="ia_mp"></div>';
+  addQ(cb, 'MarketPay — incompatibilites', html);
+}
+function onMP(label) {
+  setIA('ia_mp','r','Retour commercial : MarketPay incompatible avec "'+label+'".');
+  phrase('r','Madame/Monsieur, je prefere vous en informer maintenant : ce terminal ne permet pas '+label+'. Notre conseiller va reprendre contact avec vous.');
+  addAction('r','Retour commercial — MarketPay incompatible : '+label);
+}
+
+function buildCR(cb) {
+  addQ(cb, 'Cheques-repas',
+    '<div class="qlabel">Le client a deja des contrats prestataires ?</div>' +
+    '<div class="opts">' +
+    '<div class="opt" onclick="selOpt(this,\'cr_c\',\'oui\');showSub(\'sq_uid\')">Oui — je recupere les UIDs</div>' +
+    '<div class="opt" onclick="selOpt(this,\'cr_c\',\'non\');showSub(\'sq_nodoc\');phrase(\'o\',\'Pas de souci, nous allons vous envoyer les documents d\'\'affiliation Edenred, Monizze et Pluxee.\')">Non — docs a envoyer</div>' +
+    '</div>' +
+    '<div class="subq" id="sq_uid"><label>Edenred</label><input type="text" placeholder="UID Edenred"><label>Monizze</label><input type="text" placeholder="UID Monizze"><label>Pluxee</label><input type="text" placeholder="UID Pluxee"></div>' +
+    '<div class="subq" id="sq_nodoc"><div style="font-size:12px;color:var(--orange);font-weight:600">Envoyer docs affiliation : Edenred + Monizze + Pluxee</div></div>'
+  );
+}
+
+function buildCC(cb) {
+  addQ(cb, 'Cartes de credit',
+    '<div class="qlabel">Le client confirme les cartes de credit ?</div>' +
+    '<div class="opts">' +
+    '<div class="opt" onclick="selOpt(this,\'cc_ok\',\'oui\');phrase(\'g\',\'Cartes de credit confirmees.\')">Oui, confirmees</div>' +
+    '<div class="opt" onclick="selOpt(this,\'cc_ok\',\'modif\');showSub(\'sq_cc\')">Modification souhaitee</div>' +
+    '</div>' +
+    '<div class="subq" id="sq_cc"><label>Precisions</label><input type="text" placeholder="Ex: ajouter Amex..."><div class="ia o on" style="margin-top:6px">Adapter le contrat — verifier conditions commerciales.</div></div>'
+  );
+}
+
+// CAISSE SEARCH
+function searchC(inp, pfx, model) {
+  const q = inp.value.toLowerCase().trim();
+  const res = document.getElementById(pfx+'_res');
+  if (!q||q.length<2){res.style.display='none';return;}
+  const matches = INTEGRATORS.filter(i=>i.n.toLowerCase().includes(q)).slice(0,8);
+  if (!matches.length){res.innerHTML='<div class="cs-item" style="color:var(--muted)">Aucun resultat</div>';res.style.display='block';return;}
+  res.innerHTML = matches.map(i=>{
+    const hasR=i.t.includes('RX'),hasD=i.t.includes('DX');
+    const compat=(model==='RX'&&hasR)||(model==='DX'&&hasD);
+    const unknown=!i.t.length;
+    const badge=unknown?'<span class="cs-badge cb-w">A verifier</span>':compat?'<span class="cs-badge cb-ok">Compatible</span>':'<span class="cs-badge cb-no">Non compatible</span>';
+    return '<div class="cs-item" onclick="pickC(\''+pfx+'\',\''+i.n.replace(/'/g,"\\'")+'\','+compat+','+unknown+',\''+model+'\')">'+i.n+badge+'</div>';
+  }).join('');
+  res.style.display='block';
+}
+
+function pickC(pfx, name, compat, unknown, model) {
+  document.getElementById(pfx+'_inp').value=name;
+  document.getElementById(pfx+'_res').style.display='none';
+  if(unknown){
+    setIA('ia_'+pfx+'c','o','Compatibilite a verifier avant installation.');
+    phrase('o','Je vais verifier la compatibilite avec votre logiciel. Nous vous confirmons ca rapidement.');
+    addAction('o','Verifier compatibilite "'+name+'" avec '+model);
+  } else if(compat){
+    setIA('ia_'+pfx+'c','g','Compatible.');
+    phrase('g','Votre systeme de caisse est compatible avec le terminal.');
+    if(pfx==='rx'){setIA('ia_rx','o','Modification : remplacer RX5000 par DX8000 pour connexion caisse.');addAction('o','Remplacer RX5000 > DX8000 (caisse "'+name+'")');}
+  } else {
+    setIA('ia_'+pfx+'c','r','Non compatible — retour commercial obligatoire.');
+    phrase('r','Votre logiciel de caisse n\'est pas compatible avec ce terminal. Notre conseiller va reprendre contact avec vous.');
+    addAction('r','Retour commercial — caisse "'+name+'" incompatible '+model);
+  }
+}
+
+// ============================================================
+// STEP 3 – RECAP
+// ============================================================
+function buildRecap() {
+  const hasR=ACTIONS.some(a=>a.t==='r'), hasO=ACTIONS.some(a=>a.t==='o');
+  const sc=hasR?'r':hasO?'o':'g';
+  const st=hasR?'Retour commercial obligatoire — dossier bloque':hasO?'Modifications administratives necessaires':'Dossier conforme — installation possible';
+
+  const g = (key) => {
+    const edited = document.getElementById('edit_'+key);
+    return edited ? edited.value.trim() : (D[key]?.v || '--');
+  };
+  const corr = (id) => { const e=document.getElementById(id); return e?e.value.trim():''; };
+
+  const svcL={svc_cc:'Cartes credit',svc_cr:'Cheques-repas',svc_ores:'ORES',svc_barra:'Barracuda',svc_eid:'Lecteur ID',svc_pad:'Paiem. distance',svc_dcc:'DCC',svc_backup:'Backup mode'};
+  const svcRows=Object.entries(svcL).map(([k,l])=>'<tr><td>'+l+'</td><td>'+(D[k]==='oui'?'✅ Oui':D[k]==='non'?'Non':'Non renseigne')+'</td></tr>').join('');
+
+  const anomalyRows=ANOMALIES.map(a=>'<tr><td style="color:'+(a.sev==='red'?'var(--red)':'var(--orange)')+';font-weight:700">'+(a.sev==='red'?'🚫':'⚠️')+' '+a.title+'</td><td style="font-size:12px">'+a.desc+'</td></tr>').join('');
+
+  const corrRows=[
+    corr('corr_soc')&&'<tr class="corr-highlight"><td>Societe (CORR.)</td><td>'+corr('corr_soc')+'</td></tr>',
+    corr('corr_bce')&&'<tr class="corr-highlight"><td>BCE/TVA (CORR.)</td><td>'+corr('corr_bce')+'</td></tr>',
+    corr('corr_adr')&&'<tr class="corr-highlight"><td>Adresse (CORR.)</td><td>'+corr('corr_adr')+'</td></tr>',
+    corr('corr_email')&&'<tr class="corr-highlight"><td>Email (CORR.)</td><td>'+corr('corr_email')+'</td></tr>',
+    corr('corr_tel')&&'<tr class="corr-highlight"><td>Tel (CORR.)</td><td>'+corr('corr_tel')+'</td></tr>',
+  ].filter(Boolean).join('');
+
+  const actHTML=ACTIONS.length?ACTIONS.map(a=>'<div style="padding:7px 10px;border-radius:6px;font-size:12px;font-weight:600;margin-bottom:5px;border-left:3px solid;background:'+(a.t==='r'?'var(--red-lt)':a.t==='o'?'var(--orange-lt)':'var(--green-lt)')+';border-color:'+(a.t==='r'?'var(--red)':a.t==='o'?'var(--orange)':'var(--green)')+';color:'+(a.t==='r'?'#7f1d1d':a.t==='o'?'#78350f':'#14532d')+'">'+(a.t==='r'?'🚫':a.t==='o'?'🔧':'✅')+' '+a.msg+'</div>').join(''):'<div style="color:var(--green);font-size:13px;font-weight:600">✅ Aucune action requise</div>';
+
+  document.getElementById('recapContent').innerHTML=
+    '<div class="status-banner '+sc+'">'+st+'</div>'+
+    '<div class="section-card" style="margin-bottom:12px"><div class="sc-head">Identification</div><table class="rtable"><tbody>'+
+    '<tr><td>Societe</td><td>'+g('societe')+'</td></tr>'+
+    '<tr><td>BCE / TVA</td><td>'+g('bce')+'</td></tr>'+
+    '<tr><td>Adresse</td><td>'+g('adresse')+'</td></tr>'+
+    '<tr><td>Email</td><td>'+g('email')+'</td></tr>'+
+    '<tr><td>Tel</td><td>'+g('tel')+'</td></tr>'+
+    '<tr><td>Contact</td><td>'+g('contact')+'</td></tr>'+
+    '<tr><td>Peppol ID</td><td>'+g('peppol')+'</td></tr>'+
+    '<tr><td>IBAN</td><td>'+g('iban')+'</td></tr>'+
+    corrRows+
+    '</tbody></table></div>'+
+    '<div class="section-card" style="margin-bottom:12px"><div class="sc-head">Terminal</div><table class="rtable"><tbody>'+
+    '<tr><td>Modele</td><td>'+g('modele')+'</td></tr>'+
+    '<tr><td>Connectivite</td><td>'+g('connect')+'</td></tr>'+
+    '<tr><td>Nb terminaux</td><td>'+g('nb')+'</td></tr>'+
+    '<tr><td>Kit</td><td>'+g('kit')+'</td></tr>'+
+    '<tr><td>Caisse</td><td>'+g('caisse')+'</td></tr>'+
+    '<tr><td>Location</td><td>'+g('location_type')+(D.loyer_ttc?.v?' — '+D.loyer_ttc.v+' TTC':'')+' '+(D.duree_mois?.v?'('+D.duree_mois.v+' mois)':'')+'</td></tr>'+
+    '</tbody></table></div>'+
+    '<div class="section-card" style="margin-bottom:12px"><div class="sc-head">Services</div><table class="rtable"><tbody>'+svcRows+'</tbody></table></div>'+
+    (ANOMALIES.length?'<div class="section-card" style="margin-bottom:12px"><div class="sc-head" style="background:var(--red)">Anomalies contrat</div><table class="rtable"><tbody>'+anomalyRows+'</tbody></table></div>':'')+
+    '<div class="section-card" style="margin-bottom:12px"><div class="sc-head">Actions a realiser</div><div style="padding:12px">'+actHTML+'</div></div>'+
+    '<div class="section-card" style="margin-bottom:12px"><div class="sc-head">Notes finales</div><div style="padding:12px"><textarea id="f_notes" style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:9px;font-size:13px;font-family:inherit;min-height:60px;outline:none" placeholder="Commentaires additionnels..."></textarea></div></div>';
+}
+
+// ============================================================
+// NAVIGATION
+// ============================================================
+function goNext() {
+  if (phase===0) {
+    phase=1;
+    document.getElementById('step1').style.display='none';
+    document.getElementById('pdfCol').classList.add('hidden');
+    const s2=document.getElementById('step2');
+    s2.style.display='flex';
+    buildCallScript();
+    buildCallQuestions();
+    document.getElementById('stp0').className='step done';
+    document.getElementById('stp1').className='step active';
+    document.getElementById('btnNext').textContent='Terminer l\'appel →';
+    document.getElementById('btnBack').classList.remove('hidden');
+  } else if (phase===1) {
+    phase=2;
+    document.getElementById('step2').style.display='none';
+    document.getElementById('step3').style.display='block';
+    buildRecap();
+    document.getElementById('stp1').className='step done';
+    document.getElementById('stp2').className='step active';
+    document.getElementById('btnNext').classList.add('hidden');
+    document.getElementById('btnPDF').classList.remove('hidden');
+    document.getElementById('btnReset').classList.remove('hidden');
+  }
+}
+
+function goBack() {
+  if (phase===1) {
+    phase=0;
+    document.getElementById('step2').style.display='none';
+    document.getElementById('step1').style.display='flex';
+    document.getElementById('pdfCol').classList.remove('hidden');
+    document.getElementById('stp1').className='step';
+    document.getElementById('stp0').className='step active';
+    document.getElementById('btnNext').textContent='Demarrer l\'appel →';
+    document.getElementById('btnBack').classList.add('hidden');
+  } else if (phase===2) {
+    phase=1;
+    document.getElementById('step3').style.display='none';
+    const s2=document.getElementById('step2');
+    s2.style.display='flex';
+    document.getElementById('stp2').className='step';
+    document.getElementById('stp1').className='step active';
+    document.getElementById('btnNext').classList.remove('hidden');
+    document.getElementById('btnNext').textContent='Terminer l\'appel →';
+    document.getElementById('btnPDF').classList.add('hidden');
+    document.getElementById('btnReset').classList.add('hidden');
+  }
+}
+
+// ============================================================
+// PDF GENERATION
+// ============================================================
+function genPDF() {
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  const M=16,W=210,UW=W-M*2; let y=M;
+  const chk=(n=10)=>{if(y+n>282){doc.addPage();y=M;}};
+  const sec=(t,col)=>{chk(10);const c=col||[26,39,68];doc.setFillColor(...c);doc.rect(M,y,UW,6,'F');doc.setTextColor(255,255,255);doc.setFontSize(8.5);doc.setFont('helvetica','bold');doc.text(t,M+2,y+4.3);y+=9;};
+  const row=(l,v,warn)=>{chk(7);if(warn)doc.setFillColor(255,251,235);else doc.setFillColor(255,255,255);doc.rect(M,y,UW,6,'F');doc.setTextColor(100,116,139);doc.setFontSize(8);doc.setFont('helvetica','bold');doc.text(l+' :',M+2,y+4.3);doc.setTextColor(warn?[180,80,0]:30);doc.setFont('helvetica',warn?'bold':'normal');const ls=doc.splitTextToSize(String(v||'--'),UW-52);doc.text(ls,M+52,y+4.3);y+=Math.max(6,ls.length*5);};
+
+  doc.setFillColor(26,39,68);doc.rect(0,0,210,22,'F');
+  doc.setTextColor(255,255,255);doc.setFontSize(13);doc.setFont('helvetica','bold');
+  doc.text('Compte rendu Welcome Call',M,11);
+  doc.setFontSize(8.5);doc.setFont('helvetica','normal');
+  doc.text('Inocrea / Worldline  —  '+new Date().toLocaleString('fr-BE'),M,18);
+  y=28;
+
+  const hasR=ACTIONS.some(a=>a.t==='r'),hasO=ACTIONS.some(a=>a.t==='o');
+  const sc=hasR?[220,38,38]:hasO?[217,119,6]:[22,163,74];
+  const st=hasR?'RETOUR COMMERCIAL OBLIGATOIRE':hasO?'MODIFICATIONS NECESSAIRES':'DOSSIER CONFORME';
+  doc.setFillColor(...sc);doc.roundedRect(M,y,UW,7,2,2,'F');
+  doc.setTextColor(255,255,255);doc.setFontSize(9);doc.setFont('helvetica','bold');
+  doc.text(st,M+3,y+5);y+=12;
+
+  const g=(key)=>{const e=document.getElementById('edit_'+key);return e?e.value.trim():(D[key]?.v||'--');};
+  const corr=(id)=>{const e=document.getElementById(id);return e?e.value.trim():'';};
+
+  sec('IDENTIFICATION');
+  row('Societe',g('societe'));row('BCE / TVA',g('bce'));row('Adresse',g('adresse'));
+  row('Email',g('email'));row('Tel',g('tel'));row('Peppol ID',g('peppol'));row('IBAN',g('iban'));
+  if(corr('corr_soc')) row('Societe CORR.',corr('corr_soc'),true);
+  if(corr('corr_bce')) row('BCE CORR.',corr('corr_bce'),true);
+  if(corr('corr_adr')) row('Adresse CORR.',corr('corr_adr'),true);
+  if(corr('corr_email')) row('Email CORR.',corr('corr_email'),true);
+  if(corr('corr_tel')) row('Tel CORR.',corr('corr_tel'),true);
+  y+=3;
+
+  sec('TERMINAL & CONTRAT');
+  row('Modele',g('modele'));row('Connectivite',g('connect'));row('Nb terminaux',g('nb'));
+  row('Kit',g('kit'));row('Caisse',g('caisse'));
+  row('Location',g('location_type')+(D.loyer_ttc?.v?' — '+D.loyer_ttc.v+' TTC':'')+' '+(D.duree_mois?.v?'('+D.duree_mois.v+' mois)':''));
+  y+=3;
+
+  sec('SERVICES');
+  const svcL={svc_cc:'Cartes credit',svc_cr:'Cheques-repas',svc_ores:'ORES',svc_barra:'Barracuda',svc_eid:'Lecteur ID',svc_pad:'Paiement distance'};
+  Object.entries(svcL).forEach(([k,l])=>row(l,D[k]==='oui'?'Oui':D[k]==='non'?'Non':'--'));
+  y+=3;
+
+  if(ANOMALIES.length){
+    sec('ANOMALIES DETECTEES',[220,38,38]);
+    ANOMALIES.forEach(a=>row((a.sev==='red'?'BLOQUANT: ':'ATTENTION: ')+a.title,a.desc,a.sev==='orange'));
+    y+=3;
+  }
+
+  sec('ACTIONS A REALISER');
+  if(!ACTIONS.length){row('Statut','Aucune action requise');}
+  else ACTIONS.forEach(a=>row(a.t==='r'?'BLOQUANT':a.t==='o'?'ADMIN':'OK',a.msg,a.t==='o'));
+
+  const notes=document.getElementById('f_notes')?.value;
+  if(notes){y+=3;sec('NOTES');const ls=doc.splitTextToSize(notes,UW-4);chk(ls.length*5+4);doc.setTextColor(30,41,59);doc.setFont('helvetica','normal');doc.setFontSize(8.5);doc.text(ls,M+2,y);y+=ls.length*5+4;}
+
+  const pages=doc.internal.getNumberOfPages();
+  for(let i=1;i<=pages;i++){doc.setPage(i);doc.setFillColor(241,245,249);doc.rect(0,287,210,10,'F');doc.setTextColor(100,116,139);doc.setFontSize(7.5);doc.setFont('helvetica','normal');doc.text('Welcome Call — '+(D.societe?.v||'dossier')+' — '+new Date().toLocaleString('fr-BE'),M,293);doc.text('Page '+i+'/'+pages,195,293,{align:'right'});}
+
+  doc.save('welcome_call_'+(D.societe?.v||'dossier').replace(/\s+/g,'_')+'_'+new Date().toISOString().slice(0,10)+'.pdf');
+}
+</script>
+</body>
+</html>

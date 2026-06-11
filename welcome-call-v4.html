@@ -580,7 +580,7 @@ function renderAnalysis() {
 
   let svcHtml = '<div class="svc-grid-display">';
   Object.entries(svcLabels).forEach(([k, lbl]) => {
-    const val = D[k] || 'nc';
+    const val = String(D[k] || 'nc');
     const cls = val==='oui' ? 'yes' : val==='non' ? 'no' : 'warn';
     const icon = val==='oui' ? '✅' : val==='non' ? '—' : '?';
     svcHtml += `<div class="svc-disp ${cls}">${icon} ${lbl}</div>`;
@@ -591,7 +591,7 @@ function renderAnalysis() {
 
   const field = (label, key, full=false) => {
     const obj = D[key] || {v:'', c:'low'};
-    const val = obj.v || '';
+    const val = String(obj.v !== undefined && obj.v !== null ? obj.v : '');
     const conf = obj.c || 'low';
     const isEmpty = !val.trim();
     return `<div class="data-field${full?' full':''}">
@@ -695,7 +695,7 @@ function renderAnalysisError(msg) {
 }
 
 function markEdit(inp, key) {
-  const original = D[key]?.v || '';
+  const original = String(D[key]?.v !== undefined && D[key]?.v !== null ? D[key].v : '');
   if (inp.value.trim() !== original) {
     inp.classList.add('mod');
     D[key] = {v: inp.value.trim(), c: 'high', edited: true};
@@ -987,7 +987,9 @@ function buildRecap() {
 
   const g = (key) => {
     const edited = document.getElementById('edit_'+key);
-    return edited ? edited.value.trim() : (D[key]?.v || '--');
+    if (edited) return edited.value.trim();
+    const v = D[key]?.v;
+    return (v !== undefined && v !== null && v !== '') ? String(v) : '--';
   };
   const corr = (id) => { const e=document.getElementById(id); return e?e.value.trim():''; };
 

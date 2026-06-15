@@ -663,12 +663,17 @@ async function analyzeContract(b64, mime) {
     ? {type:'image', source:{type:'base64', media_type:mime, data:b64}}
     : {type:'document', source:{type:'base64', media_type:'application/pdf', data:b64}};
 
-  const prompt = `Tu es un expert en analyse de contrats de terminaux de paiement Worldline/Inocrea.
-Analyse ce bon de commande et retourne UNIQUEMENT un JSON valide sans markdown.
+  const prompt = `Tu es un expert en analyse de dossiers de terminaux de paiement Worldline/Inocrea.
+Ce PDF peut contenir plusieurs documents : bon de commande Inocrea, contrat Worldline, carte d'identité recto/verso, RIB/relevé bancaire, annexes services.
+Analyse l'ENSEMBLE des pages et retourne UNIQUEMENT un JSON valide sans markdown.
 
-Extrais toutes les informations et evalue la confiance: "high"=clairement lisible, "med"=partiellement lisible, "low"=illisible/absent.
+Confiance : "high"=clairement lisible, "med"=partiellement lisible, "low"=illisible/absent.
 
-JSON a retourner:
+SECTION 1 — CONTRAT (bon de commande Inocrea, page 1)
+SECTION 2 — CARTE D'IDENTITÉ : cherche une CI belge recto (photo, nom, prénom, date naissance, validité) et verso (MRZ, numéro registre national). Evalue couleur vs N&B, qualité, validité.
+SECTION 3 — RIB : cherche un relevé bancaire ou attestation IBAN (ING, BNP, Belfius, KBC...). Vérifie que l'IBAN du RIB correspond à celui du contrat. Vérifie que le nom société du RIB correspond.
+
+JSON à retourner (NE PAS omettre les champs doc_*) :
 {
   "societe": {"v":"","c":"high"},
   "bce": {"v":"","c":"high"},
@@ -702,8 +707,31 @@ JSON a retourner:
   "signature_presente": true,
   "iban_visible": true,
   "peppol_visible": true,
-  "notes_contrat": ""
-}`;
+  "notes_contrat": "",
+  "doc_rib_present": false,
+  "doc_rib_banque": "",
+  "doc_rib_societe": "",
+  "doc_rib_date": "",
+  "doc_rib_iban_match": false,
+  "doc_rib_ok": false,
+  "doc_ci_recto": false,
+  "doc_ci_verso": false,
+  "doc_ci_couleur": false,
+  "doc_ci_nom": "",
+  "doc_ci_validite": "",
+  "doc_ci_valide": false,
+  "doc_ci_qualite": "low"
+}
+
+RÈGLES IMPORTANTES :
+- doc_rib_present = true si une page contient un relevé/attestation bancaire (ING, BNP, Belfius, KBC, Nagelmackers, etc.)
+- doc_rib_iban_match = true si l'IBAN du RIB correspond exactement à l'IBAN du contrat (ignore espaces)
+- doc_rib_ok = true si banque visible + société visible + IBAN correspondant
+- doc_ci_recto = true si une page montre le recto d'une carte d'identité belge (avec photo)
+- doc_ci_verso = true si une page montre le verso (avec MRZ / lignes de chiffres)
+- doc_ci_couleur = true si la CI est en couleur (pas N&B/photocopie grise)
+- doc_ci_valide = true si la date "valide jusqu'au" est dans le futur (après juin 2026)
+- doc_ci_qualite = "high" si nette et lisible, "med" si acceptable, "low" si floue/illisible`;
 
   const resp = await fetch('https://quiet-bonus-454e.olivierdubost.workers.dev/', {
     method: 'POST',
@@ -711,8 +739,8 @@ JSON a retourner:
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      model: 'claude-opus-4-5',
-      max_tokens: 1500,
+      model: 'claude-opus-4-6',
+      max_tokens: 2000,
       system: 'Tu analyses des contrats de terminaux de paiement. Reponds UNIQUEMENT en JSON valide, sans markdown, sans texte avant ou apres.',
       messages: [{role:'user', content:[contentItem, {type:'text', text:prompt}]}]
     })

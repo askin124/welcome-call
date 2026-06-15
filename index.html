@@ -520,7 +520,7 @@ function loadFiles(files) {
 
   var firstFile = pdfs.length > 0 ? pdfs[0] : files[0];
   displayPDFFile(firstFile);
-  analyzeContractFile(firstFile);
+  startAnalysis(firstFile);
 }
 
 async function mergeToPDF(files) {

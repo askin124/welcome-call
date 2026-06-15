@@ -593,8 +593,11 @@ function loadContract(file) {
 
 
 function startAnalysis(file) {
-  const s1 = document.getElementById('step1');
-  s1.innerHTML = buildLoadingHTML();
+  D = {}; ANOMALIES = []; ACTIONS = [];
+  var lz = document.getElementById('loaderZone');
+  if (lz) { lz.innerHTML = buildLoadingHTML(); lz.style.display = 'block'; }
+  var az = document.getElementById('analysisZone');
+  if (az) az.innerHTML = '';
 
   const reader = new FileReader();
   reader.onload = async ev => {

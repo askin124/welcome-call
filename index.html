@@ -352,6 +352,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--surface);color
       <div style="display:flex;gap:8px">
         <button class="btn btn-sec hidden" id="btnBack" onclick="goBack()">← Retour</button>
         <button class="btn btn-sec hidden" id="btnPDF" onclick="genPDF()">🖨️ PDF</button>
+        <button class="btn btn-sec hidden" id="btnEmail" onclick="openEmailPreview()">✉️ Email</button>
       </div>
       <div>
         <button class="btn btn-sec hidden" id="btnReset" onclick="if(confirm('Êtes-vous sûr ? Toutes les données de ce dossier seront effacées.'))resetAll()">🔄 Nouveau dossier</button>
@@ -475,7 +476,7 @@ function resetUploadScreen() {
   var tb=document.getElementById('testBtns'); if(tb) tb.style.display='none';
   // Test buttons are static in HTML — analysisZone already cleared above
   const bb = document.getElementById('btnBack');
-  if(bb) bb.style.display = 'none';
+  if(bb) { bb.style.display = ''; bb.classList.add('hidden'); }
   const pc = document.getElementById('pdfCol');
   if(pc){ pc.style.display=''; pc.style.width=''; pc.classList.remove('hidden'); }
   document.getElementById('stp0').className = 'step active';
@@ -681,7 +682,12 @@ En cas de doute → "nc". Ne jamais inventer ou enrichir le contenu. Les notes_c
 
 ═══ SECTION 1 — BON DE COMMANDE INOCREA ═══
 Page avec double logo Inocrea + Worldline en haut.
-- Extrais : societe, bce, adresse, email, tel, contact, peppol, iban, commercial, date_signature, civilite
+- Extrais : societe, bce, email, tel, contact, peppol, iban, commercial, date_signature, civilite
+- adresse_facturation : champ "Siège social" (bon Inocrea) ou "Adresse (siège social)" / "Informations de facturation" (bon Worldline). C'est l'adresse principale de la société.
+- adresse_livraison : champ "Adresse livraison" (bon Inocrea) ou "Informations du site d'exploitation" (bon Worldline).
+  RÈGLE IMPORTANTE : si ce champ contient "idem", "idem ci-dessus", des guillemets de répétition (″, ‶, ", ou des petits traits "), ou est simplement vide alors que le champ facturation est rempli → adresse_livraison = copie exacte de adresse_facturation (confiance "med").
+  Si une vraie adresse différente est écrite dans le champ dédié → la retranscrire telle quelle (confiance "high").
+  Si le champ dédié est vide/illisible MAIS qu'une adresse différente du siège social apparaît dans les Notes manuscrites → l'utiliser comme adresse_livraison (confiance "med") et le préciser dans notes_contrat.
 - modele : "RX5000" si ligne RX5000 cochée/montant renseigné, "DX8000" si ligne DX8000, "Yomani Double Module", "MarketPay PAX A8500 + Q25", "MarketPay PAX A8900", sinon "Inconnu"
 - connect : WiFi / 4G / Ethernet selon case cochée
 - nb : quantité dans la colonne Qté du bon Inocrea. Si la colonne Qté est vide alors que le terminal est sélectionné → nb=0 ET qte_manquante_inocrea=true
@@ -737,7 +743,8 @@ JSON à retourner :
 {
   "societe": {"v":"","c":"high"},
   "bce": {"v":"","c":"high"},
-  "adresse": {"v":"","c":"high"},
+  "adresse_facturation": {"v":"","c":"high"},
+  "adresse_livraison": {"v":"","c":"high"},
   "email": {"v":"","c":"high"},
   "tel": {"v":"","c":"high"},
   "contact": {"v":"","c":"high"},
@@ -849,6 +856,8 @@ function detectAnomalies(d) {
       add("orange", "Système de caisse à reconfirmer", "\"" + (d.caisse?.v||"") + "\" ressemble à \"" + (d.caisse_suggestion||"?") + "\" — faute d'orthographe probable. À confirmer avec le client.");
     } else if (cs === "inconnu") {
       add("orange", "Système de caisse inconnu", "\"" + (d.caisse?.v||"") + "\" n'est pas dans la liste des intégrateurs Worldline. À vérifier.");
+    } else if (cs === "valide" && d.caisse?.edited) {
+      add("green", "Système de caisse corrigé", "Anomalie initiale résolue — caisse confirmée avec le client : " + (d.caisse?.v||""));
     }
   }
   if (d.qte_manquante_inocrea === true || (d.nb && String(d.nb?.v) === '0')) {
@@ -892,9 +901,13 @@ function detectAnomalies(d) {
   }
   if (!d.bce?.v || d.bce.v.trim() === "") {
     add("orange", "Numéro BCE / TVA manquant", "Le numéro d'entreprise n'est pas renseigné.");
+  } else if (d.bce?.edited) {
+    add("green", "BCE / TVA corrigé", "Information complétée/corrigée avec le client : " + d.bce.v);
   }
   if (!d.societe?.v || d.societe.v.trim() === "") {
     add("red", "Nom société manquant", "Le nom de la société n'est pas lisible dans le contrat.");
+  } else if (d.societe?.edited) {
+    add("green", "Nom société corrigé", "Information corrigée avec le client : " + d.societe.v);
   }
   if (d.doc_rib_present === false) {
     add("red", "RIB manquant", "Aucun RIB trouvé. Document obligatoire.");
@@ -1063,7 +1076,8 @@ function renderAnalysis() {
           <table style="width:100%;border-collapse:collapse">
             ${row('Société','societe')}
             ${row('BCE / TVA','bce')}
-            ${row('Adresse de livraison','adresse')}
+            ${row('Adresse facturation','adresse_facturation')}
+            ${row('Adresse livraison','adresse_livraison')}
             ${row('Email','email')}
             ${row('Tél / GSM','tel')}
             ${row('Contact','contact')}
@@ -1071,6 +1085,15 @@ function renderAnalysis() {
             ${row('IBAN','iban')}
             ${row('Commercial','commercial')}
           </table>
+          ${(() => {
+            const af = g('adresse_facturation').trim().toLowerCase();
+            const al = g('adresse_livraison').trim().toLowerCase();
+            if (af && al && af !== al) {
+              return '<div style="margin-top:8px;padding:8px 10px;background:var(--blue-lt,#EFF6FF);border-left:3px solid var(--blue,#3B82F6);border-radius:6px;font-size:12px;color:var(--text)">'+
+                'ℹ️ <b>Adresse de livraison différente</b> de l\'adresse de facturation — à confirmer avec le client lors de l\'installation.</div>';
+            }
+            return '';
+          })()}
         </div>
       </div>
 
@@ -1160,7 +1183,7 @@ function renderAnalysis() {
   btnDiv.id = '_bottomBtns';
   btnDiv.style.cssText = 'padding:20px 0 8px;display:flex;justify-content:space-between;align-items:center';
   const btnRetour = document.createElement('button');
-  btnRetour.onclick = function(){ resetUploadScreen(); D={}; ANOMALIES=[]; ACTIONS=[]; const bb=document.getElementById('btnBack'); if(bb) bb.style.display='none'; };
+  btnRetour.onclick = function(){ resetUploadScreen(); D={}; ANOMALIES=[]; ACTIONS=[]; const bb=document.getElementById('btnBack'); if(bb){bb.style.display='';bb.classList.add('hidden');} };
   btnRetour.textContent = '← Retour';
   btnRetour.style.cssText = 'background:var(--surface);color:var(--muted);border:1.5px solid var(--border);padding:12px 22px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit';
   const btnStart = document.createElement('button');
@@ -1171,7 +1194,7 @@ function renderAnalysis() {
   btnDiv.appendChild(btnStart);
   step1el.appendChild(btnDiv);
   const bb = document.getElementById('btnBack');
-  if (bb) bb.style.display = 'none';
+  if (bb) { bb.style.display=''; bb.classList.add('hidden'); }
 }
 
 function toggleEdit(el, key) {
@@ -1189,7 +1212,7 @@ function validateEdit(key) {
   if (disp) disp.textContent = val || 'Non renseigné';
   const row = document.getElementById('erow_'+key);
   if (row) row.style.display = 'none';
-  const labels = {societe:'Société',bce:'BCE/TVA',adresse:'Adresse',email:'Email',tel:'Téléphone',
+  const labels = {societe:'Société',bce:'BCE/TVA',adresse_facturation:'Adresse facturation',adresse_livraison:'Adresse livraison',email:'Email',tel:'Téléphone',
     contact:'Contact',peppol:'Peppol',iban:'IBAN',commercial:'Commercial',caisse:'Caisse',
     loyer_ttc:'Loyer',duree_mois:'Durée',nbre_loyers:'Nb loyers'};
   const msg = 'Corriger '+(labels[key]||key)+' : '+val;
@@ -1279,7 +1302,7 @@ function markEditKey(inp) {
   if (!D[key]) D[key] = {v:'',c:'high'};
   D[key].v = val;
   D[key].edited = true;
-  const labels = {societe:'Société',bce:'BCE/TVA',adresse:'Adresse de livraison',email:'Email',tel:'Téléphone',
+  const labels = {societe:'Société',bce:'BCE/TVA',adresse_facturation:'Adresse facturation',adresse_livraison:'Adresse livraison',email:'Email',tel:'Téléphone',
     modele:'Modèle',connect:'Connectivité',nb:'Nb terminaux',kit:'Kit',caisse:'Caisse',
     dx_ref:'Réf DX',location_type:'Location',loyer_ttc:'Loyer',duree_mois:'Durée',commercial:'Commercial'};
   const msg = 'Corriger '+(labels[key]||key)+' : '+val;
@@ -1454,8 +1477,8 @@ function buildTrame() {
   );
 
       // ── SECTION 2 : INFOS CLIENT (modifiables inline) ───────────────────────
-  var infoKeys = ['societe','bce','adresse','email','tel'];
-  var infoLabels = {societe:'Société',bce:'BCE / TVA',adresse:'Adresse de livraison',email:'Email',tel:'Téléphone'};
+  var infoKeys = ['societe','bce','adresse_facturation','adresse_livraison','email','tel'];
+  var infoLabels = {societe:'Société',bce:'BCE / TVA',adresse_facturation:'Adresse facturation',adresse_livraison:'Adresse livraison',email:'Email',tel:'Téléphone'};
   var infoRows = infoKeys.map(function(k){
     var val = String(D[k]&&D[k].v?D[k].v:'—');
     return '<tr style="border-bottom:1px solid rgba(255,255,255,.08)">'+
@@ -1471,7 +1494,7 @@ function buildTrame() {
   );
   // Add blur listeners after section is in DOM
   setTimeout(function(){
-    ['societe','bce','adresse','email','tel'].forEach(function(k){
+    ['societe','bce','adresse_facturation','adresse_livraison','email','tel'].forEach(function(k){
       var el = document.getElementById('ti_'+k);
       if(!el) return;
       el.addEventListener('focus', function(){ this.style.background='rgba(255,255,255,.08)'; });
@@ -1840,7 +1863,7 @@ function buildTrame() {
       }
       const sw = document.createElement('div');
       sw.className = 'caisse-search-dark';
-      window._currentSearchModel = modele; sw.innerHTML = '<span class="cs-dark-ico">🔍</span><input type="text" id="dx_caisse_inp'+suffix+'" placeholder="Tapez le nom de la caisse..." oninput="trameSearchCaisse(this)" value="'+(caisseVal||'')+'">';
+      window._currentSearchModel = modele; sw.innerHTML = '<span class="cs-dark-ico">🔍</span><input type="text" id="dx_caisse_inp'+suffix+'" placeholder="Tapez le nom de la caisse..." oninput="trameSearchCaisse(this)" onblur="trameCaisseBlur(this)" value="'+(caisseVal||'')+'">';
       const sr = document.createElement('div');
       sr.className = 'cs-dark-res'; sr.id = 'dx_caisse_res'+suffix;
       container.appendChild(sw); container.appendChild(sr);
@@ -1913,7 +1936,7 @@ function buildTrame() {
       }
       const swRX = document.createElement('div');
       swRX.className = 'caisse-search-dark';
-      swRX.innerHTML = '<span class="cs-dark-ico">🔍</span><input type="text" id="rx_caisse_inp'+suffix+'" placeholder="Tapez le nom de la caisse..." oninput="trameSearchCaisse(this)" value="'+(caisseVal||'')+'">';
+      swRX.innerHTML = '<span class="cs-dark-ico">🔍</span><input type="text" id="rx_caisse_inp'+suffix+'" placeholder="Tapez le nom de la caisse..." oninput="trameSearchCaisse(this)" onblur="trameCaisseBlur(this)" value="'+(caisseVal||'')+'">';
       window._currentSearchModel = 'RX5000';
       const srRX = document.createElement('div');
       srRX.className = 'cs-dark-res'; srRX.id = 'rx_caisse_res'+suffix;
@@ -1960,7 +1983,7 @@ function buildTrame() {
       }
       const swYDM = document.createElement('div');
       swYDM.className = 'caisse-search-dark';
-      swYDM.innerHTML = '<span class="cs-dark-ico">🔍</span><input type="text" id="ydm_caisse_inp'+suffix+'" placeholder="Tapez le nom de la caisse..." oninput="trameSearchCaisse(this)" value="'+(caisseVal||'')+'">';
+      swYDM.innerHTML = '<span class="cs-dark-ico">🔍</span><input type="text" id="ydm_caisse_inp'+suffix+'" placeholder="Tapez le nom de la caisse..." oninput="trameSearchCaisse(this)" onblur="trameCaisseBlur(this)" value="'+(caisseVal||'')+'">';
       window._currentSearchModel = 'Yomani Double Module';
       const srYDM = document.createElement('div');
       srYDM.className = 'cs-dark-res'; srYDM.id = 'ydm_caisse_res'+suffix;
@@ -2518,6 +2541,7 @@ function resetAll() {
   var bnav = document.querySelector('.bnav'); if(bnav) bnav.style.display = '';
   var _b = document.getElementById('btnBack'); if(_b) _b.classList.add('hidden');
   var _p = document.getElementById('btnPDF'); if(_p) _p.classList.add('hidden');
+  var _pe = document.getElementById('btnEmail'); if(_pe) _pe.classList.add('hidden');
   var _r = document.getElementById('btnReset'); if(_r) _r.classList.add('hidden');
   var rc = document.querySelector('.right-col'); if(rc) rc.classList.remove('full-width');
   var pc = document.getElementById('pdfCol'); if(pc){ pc.style.display=''; pc.style.width=''; pc.classList.remove('hidden'); }
@@ -2532,7 +2556,7 @@ function trameEditUpdate(el, key) {
   if(!D[key]) D[key] = {v:'',c:'high'};
   D[key].v = val;
   D[key].edited = true;
-  const labels = {societe:'Société',bce:'BCE/TVA',adresse:'Adresse de livraison',email:'Email',tel:'Téléphone'};
+  const labels = {societe:'Société',bce:'BCE/TVA',adresse_facturation:'Adresse facturation',adresse_livraison:'Adresse livraison',email:'Email',tel:'Téléphone'};
   const msg = 'Corriger '+labels[key]+' → '+val;
   const idx2 = ACTIONS.findIndex(function(a){ return a.msg && a.msg.startsWith('Corriger '+labels[key]); });
   if(idx2>=0) ACTIONS[idx2].msg=msg; else addAction('o',msg);
@@ -2594,6 +2618,14 @@ function tramePickCaisse(el, name, compat) {
       inp.dataset.compat = compat ? 'true' : 'false';
     }
   }
+  // Persiste la correction dans D — corrige le bug "anomalie caisse qui persiste après correction"
+  if (!D.caisse) D.caisse = {v:'', c:'high'};
+  D.caisse.v = name;
+  D.caisse.edited = true;
+  D.caisse_statut = 'valide';
+  D.caisse_suggestion = '';
+  addAction('o', 'Système de caisse confirmé/corrigé : ' + name);
+  if (typeof refreshAnomalies === 'function') refreshAnomalies();
   // Cherche l'alerte dans le même bloc (parent du résultat)
   const container = resEl && resEl.parentNode;
   const alertEl = container && container.querySelector('[id^="al5"]');
@@ -2608,6 +2640,21 @@ function tramePickCaisse(el, name, compat) {
       alertEl.innerHTML='✅ Caisse "'+name+'" compatible avec DX8000.';
       ACTIONS = ACTIONS.filter(function(x){ return !x.msg.includes('ANNULER LE CONTRAT — caisse'); });
     }
+  }
+}
+
+function trameCaisseBlur(inp) {
+  const val = inp.value.trim();
+  if (!val) return;
+  // Si l'utilisateur a tapé sans cliquer sur une suggestion, on persiste quand même
+  if (!D.caisse || D.caisse.v !== val) {
+    if (!D.caisse) D.caisse = {v:'', c:'high'};
+    const wasKnown = (typeof INTEGRATORS !== 'undefined') && INTEGRATORS.some(function(i){ return i.n.toLowerCase() === val.toLowerCase(); });
+    D.caisse.v = val;
+    D.caisse.edited = true;
+    D.caisse_statut = wasKnown ? 'valide' : 'reconfirmer';
+    addAction('o', 'Système de caisse confirmé/corrigé : ' + val);
+    if (typeof refreshAnomalies === 'function') refreshAnomalies();
   }
 }
 
@@ -2627,7 +2674,19 @@ function selOpt(el, k, v) {
 function showSub(id) { const e=document.getElementById(id); if(e) e.classList.add('on'); }
 function setIA(id, t, msg) { const e=document.getElementById(id); if(e){e.className='ia '+t+' on';e.textContent=msg;} }
 function phrase(t, msg) { const b=document.getElementById('callPhrase'); if(b){b.className='call-phrase '+t+' on'; b.textContent=msg;} }
-function addAction(t, msg) { if(!ACTIONS.find(a=>a.msg===msg)) ACTIONS.push({t,msg}); }
+function addAction(t, msg) {
+  // Déduplique par préfixe pour les messages qui évoluent (ex: "Système de caisse confirmé/corrigé : X")
+  const PREFIXES = [
+    'Système de caisse confirmé/corrigé : ',
+    'Corriger ', 'Modifier '
+  ];
+  const matchedPrefix = PREFIXES.find(p => msg.startsWith(p));
+  if (matchedPrefix) {
+    const idx = ACTIONS.findIndex(a => a.msg.startsWith(matchedPrefix));
+    if (idx >= 0) { ACTIONS[idx] = {t, msg}; return; }
+  }
+  if (!ACTIONS.find(a => a.msg === msg)) ACTIONS.push({t, msg});
+}
 
 function onCorr(inp, key) {
   const hasVal = inp.value.trim().length > 0;
@@ -2933,7 +2992,8 @@ function buildRecap() {
       '<table class="rtable" style="width:100%;table-layout:fixed"><thead>'+thead+'</thead><tbody>'+
       row2('Société','societe')+
       row2('BCE / TVA','bce')+
-      row2('Adresse de livraison','adresse')+
+      row2('Adresse facturation','adresse_facturation')+
+      row2('Adresse livraison','adresse_livraison')+
       row2('Email','email')+
       row2('Téléphone','tel')+
       row2('Contact','contact')+
@@ -2992,7 +3052,7 @@ function goNext() {
     var _gv = function(id){ var e=document.getElementById(id); return e?e.value.trim():''; };
     if(!D.societe || !D.societe.v) {
       // D not populated yet - fill from review form or test data fields
-      var _keys = ['societe','bce','adresse','email','tel','commercial','modele','connect','caisse'];
+      var _keys = ['societe','bce','adresse_facturation','adresse_livraison','email','tel','commercial','modele','connect','caisse'];
       _keys.forEach(function(k){
         var el = document.getElementById('r_'+k) || document.getElementById('edit_'+k);
         if(el && el.value.trim()) {
@@ -3032,6 +3092,7 @@ function goNext() {
     document.getElementById('stp2').className='step active';
     { var _e=document.getElementById('btnNext');if(_e)_e.classList.add('hidden'); };
     { var _e=document.getElementById('btnPDF');if(_e)_e.classList.remove('hidden'); };
+    { var _e=document.getElementById('btnEmail');if(_e)_e.classList.remove('hidden'); };
     { var _e=document.getElementById('btnReset');if(_e)_e.classList.remove('hidden'); };
     { var _e=document.getElementById('btnBack');if(_e)_e.classList.remove('hidden'); };
     var bnav3=document.querySelector('.bnav'); if(bnav3) bnav3.style.display='';
@@ -3045,7 +3106,7 @@ function goBack() {
     var tb=document.getElementById('testBtns'); if(tb) tb.style.display='none';
     var dz=document.getElementById('dropZone'); if(dz) dz.style.display='';
     { var _e=document.getElementById('btnNext');if(_e)_e.classList.add('hidden'); };
-    { var _e=document.getElementById('btnBack');if(_e)_e.style.display='none'; }
+    { var _e=document.getElementById('btnBack');if(_e){_e.style.display='';_e.classList.add('hidden');} }
     D={}; ANOMALIES=[]; ACTIONS=[];
     return;
   } else if (phase===1) {
@@ -3071,6 +3132,7 @@ function goBack() {
     { var _e=document.getElementById('btnNext');if(_e)_e.classList.remove('hidden'); };
     { var _e=document.getElementById('btnNext');if(_e)_e.textContent='Terminer l\'appel →'; }
     { var _e=document.getElementById('btnPDF');if(_e)_e.classList.add('hidden'); };
+    { var _e=document.getElementById('btnEmail');if(_e)_e.classList.add('hidden'); };
     { var _e=document.getElementById('btnReset');if(_e)_e.classList.add('hidden'); };
     var bnav2=document.querySelector('.bnav'); if(bnav2) bnav2.style.display='none';
   }
@@ -3085,7 +3147,39 @@ function genPDF() {
   const M=16,W=210,UW=W-M*2; let y=M;
   const chk=(n=10)=>{if(y+n>282){doc.addPage();y=M;}};
   const sec=(t,col)=>{chk(10);const c=col||[26,39,68];doc.setFillColor(c[0],c[1],c[2]);doc.rect(M,y,UW,6,'F');doc.setTextColor(255,255,255);doc.setFontSize(8.5);doc.setFont('helvetica','bold');doc.text(t,M+2,y+4.3);y+=9;};
-  const row=(l,v,warn)=>{chk(7);if(warn)doc.setFillColor(255,251,235);else doc.setFillColor(255,255,255);doc.rect(M,y,UW,6,'F');doc.setTextColor(100,116,139);doc.setFontSize(8);doc.setFont('helvetica','bold');doc.text(l+' :',M+2,y+4.3);if(warn){doc.setTextColor(180,80,0);}else{doc.setTextColor(30,30,30);}doc.setFont('helvetica',warn?'bold':'normal');const ls=doc.splitTextToSize(String(v||'--'),UW-52);doc.text(ls,M+52,y+4.3);y+=Math.max(6,ls.length*5);};
+  const row=(l,v,warn)=>{
+    chk(7);
+    doc.setFontSize(8);doc.setFont('helvetica','bold');
+    const labelLines = doc.splitTextToSize(l+' :', 48);
+    doc.setFont('helvetica',warn?'bold':'normal');
+    const valLines = doc.splitTextToSize(String(v||'--'), UW-52);
+    const nLines = Math.max(labelLines.length, valLines.length);
+    const rowH = Math.max(6, nLines*5);
+    chk(rowH);
+    if(warn)doc.setFillColor(255,251,235);else doc.setFillColor(255,255,255);
+    doc.rect(M,y,UW,rowH,'F');
+    doc.setTextColor(100,116,139);doc.setFontSize(8);doc.setFont('helvetica','bold');
+    doc.text(labelLines,M+2,y+4.3);
+    if(warn){doc.setTextColor(180,80,0);}else{doc.setTextColor(30,30,30);}
+    doc.setFont('helvetica',warn?'bold':'normal');
+    doc.text(valLines,M+52,y+4.3);
+    y+=rowH;
+  };
+  const rowBlock=(l,v,warn)=>{
+    // Label on its own line, value below — used for long anomaly titles
+    chk(6);
+    doc.setFontSize(8);doc.setFont('helvetica','bold');
+    if(warn){doc.setTextColor(180,80,0);}else{doc.setTextColor(220,38,38);}
+    const labelLines = doc.splitTextToSize(l, UW-4);
+    doc.text(labelLines,M+2,y+4.3);
+    y+=labelLines.length*4.5+1;
+    chk(6);
+    doc.setFontSize(8);doc.setFont('helvetica','normal');doc.setTextColor(60,60,60);
+    const valLines = doc.splitTextToSize(String(v||'--'), UW-4);
+    chk(valLines.length*4.5+3);
+    doc.text(valLines,M+2,y+4.3);
+    y+=valLines.length*4.5+4;
+  };
 
   doc.setFillColor(26,39,68);doc.rect(0,0,210,22,'F');
   doc.setTextColor(255,255,255);doc.setFontSize(13);doc.setFont('helvetica','bold');
@@ -3101,11 +3195,12 @@ function genPDF() {
   doc.setTextColor(255,255,255);doc.setFontSize(9);doc.setFont('helvetica','bold');
   doc.text(st,M+3,y+5);y+=12;
 
-  const g=(key)=>{const e=document.getElementById('edit_'+key);return e?e.value.trim():(D[key]?.v||'--');};
+  const g=(key)=>{ if(D[key]&&D[key].edited&&D[key].v) return String(D[key].v).trim(); const e=document.getElementById('edit_'+key);return e&&e.value.trim()?e.value.trim():(D[key]?.v||'--');};
   const corr=(id)=>{const e=document.getElementById(id);return e?e.value.trim():'';};
 
   sec('IDENTIFICATION');
-  row('Societe',g('societe'));row('BCE / TVA',g('bce'));row('Adresse de livraison',g('adresse'));
+  row('Societe',g('societe'));row('BCE / TVA',g('bce'));
+  row('Adresse facturation',g('adresse_facturation'));row('Adresse livraison',g('adresse_livraison'));
   row('Email',g('email'));row('Tel',g('tel'));row('Peppol ID',g('peppol'));row('IBAN',g('iban'));
   if(corr('corr_soc')) row('Societe CORR.',corr('corr_soc'),true);
   if(corr('corr_bce')) row('BCE CORR.',corr('corr_bce'),true);
@@ -3125,9 +3220,29 @@ function genPDF() {
   Object.entries(svcL).forEach(([k,l])=>row(l,D[k]==='oui'?'Oui':D[k]==='non'?'Non':'--'));
   y+=3;
 
-  if(ANOMALIES.length){
+  const contractAnom = ANOMALIES.filter(a=>a.sev!=='green');
+  const conformeItems = ANOMALIES.filter(a=>a.sev==='green');
+
+  if(contractAnom.length){
     sec('ANOMALIES DETECTEES',[220,38,38]);
-    ANOMALIES.forEach(a=>row((a.sev==='red'?'BLOQUANT: ':'ATTENTION: ')+a.title,a.desc,a.sev==='orange'));
+    contractAnom.forEach(a=>rowBlock((a.sev==='red'?'BLOQUANT: ':'ATTENTION: ')+a.title,a.desc,a.sev==='orange'));
+    y+=3;
+  }
+
+  if(conformeItems.length){
+    sec('POINTS CONFORMES',[22,163,74]);
+    conformeItems.forEach(a=>{
+      chk(6);
+      doc.setFontSize(8);doc.setFont('helvetica','bold');doc.setTextColor(22,163,74);
+      const labelLines = doc.splitTextToSize('✓ '+a.title, UW-4);
+      doc.text(labelLines,M+2,y+4.3);
+      y+=labelLines.length*4.5+1;
+      doc.setFontSize(8);doc.setFont('helvetica','normal');doc.setTextColor(60,60,60);
+      const valLines = doc.splitTextToSize(String(a.desc||''), UW-4);
+      chk(valLines.length*4.5+3);
+      doc.text(valLines,M+2,y+4.3);
+      y+=valLines.length*4.5+4;
+    });
     y+=3;
   }
 
@@ -3142,6 +3257,177 @@ function genPDF() {
   for(let i=1;i<=pages;i++){doc.setPage(i);doc.setFillColor(241,245,249);doc.rect(0,287,210,10,'F');doc.setTextColor(100,116,139);doc.setFontSize(7.5);doc.setFont('helvetica','normal');doc.text('Welcome Call — '+(D.societe?.v||'dossier')+' — '+new Date().toLocaleString('fr-BE'),M,293);doc.text('Page '+i+'/'+pages,195,293,{align:'right'});}
 
   doc.save('welcome_call_'+(D.societe?.v||'dossier').replace(/\s+/g,'_')+'_'+new Date().toISOString().slice(0,10)+'.pdf');
+}
+
+// ============================================================
+// EMAIL DE CONFIRMATION POST-APPEL (welcome call FR)
+// ============================================================
+function buildConfirmationEmailHTML() {
+  const g = (key) => { if(D[key]&&D[key].edited&&D[key].v) return String(D[key].v).trim(); const e=document.getElementById('edit_'+key); return e&&e.value.trim()?e.value.trim():(D[key]?.v||''); };
+  const soc = g('societe') || '';
+  const civ = g('civilite');
+  const contact = g('contact') || soc;
+  const nom = contact.split(' ').filter(Boolean)[0] || contact;
+  const salut = civ === 'Mme' ? 'Madame ' + nom : civ === 'M.' ? 'Monsieur ' + nom : (nom || 'Madame, Monsieur');
+
+  const mod = g('modele');
+  const nb = g('nb') || '1';
+  const connect = g('connect');
+  const caisse = g('caisse');
+  const af = g('adresse_facturation');
+  const al = g('adresse_livraison');
+
+  const SVC_LABELS = {
+    svc_cc: 'Cartes de crédit (Visa / Mastercard)',
+    svc_cr: 'Chèques-repas',
+    svc_dcc: 'DCC (Dynamic Currency Conversion)',
+    svc_ores: 'Service ORES',
+    svc_barra: 'Service Barracuda',
+    svc_eid: 'Lecteur de carte d\'identité',
+    svc_pad: 'Paiement à distance',
+    svc_backup: 'Backup mode'
+  };
+  const activeServices = Object.keys(SVC_LABELS).filter(k => D[k] === 'oui').map(k => SVC_LABELS[k]);
+
+  const C = '#1A3A6B';   // bleu de marque
+  const CL = '#EFF4FA';  // bleu clair fond
+  const GREEN = '#16A34A';
+
+  const fieldRow = (label, value) => value ? (
+    '<tr>' +
+      '<td style="padding:6px 0;font-size:12px;font-weight:700;color:#64748B;width:170px;vertical-align:top">' + label + '</td>' +
+      '<td style="padding:6px 0;font-size:13px;color:#1E293B;font-weight:600">' + value + '</td>' +
+    '</tr>'
+  ) : '';
+
+  let identRows = '';
+  identRows += fieldRow('Société', soc);
+  identRows += fieldRow('N° entreprise / TVA', g('bce'));
+  identRows += fieldRow('Adresse facturation', af);
+  identRows += fieldRow('Adresse livraison', al);
+  identRows += fieldRow('Téléphone', g('tel'));
+  identRows += fieldRow('Email', g('email'));
+  identRows += fieldRow('Peppol ID', g('peppol'));
+
+  let termRows = '';
+  termRows += fieldRow('Modèle de terminal', mod + (nb ? ' (x' + nb + ')' : ''));
+  termRows += fieldRow('Connectivité', connect);
+  if (caisse) termRows += fieldRow('Système de caisse', caisse);
+
+  const svcListHtml = activeServices.length
+    ? activeServices.map(s =>
+        '<div style="display:inline-block;background:#fff;border:1px solid #D1E0F0;border-radius:20px;padding:6px 14px;margin:4px 4px 0 0;font-size:12px;font-weight:600;color:' + C + '">✓ ' + s + '</div>'
+      ).join('')
+    : '<div style="font-size:13px;color:#94A3B8;font-style:italic">Aucun service additionnel activé</div>';
+
+  let html = '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f0f4f8;font-family:Arial,Helvetica,sans-serif">';
+  html += '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f4f8"><tr><td align="center" style="padding:24px 16px">';
+  html += '<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:12px;overflow:hidden">';
+
+  // Header
+  html += '<tr><td style="background:' + C + ';padding:26px 32px">';
+  html += '<div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:4px">Inocrea</div>';
+  html += '<div style="color:rgba(255,255,255,.75);font-size:12px">Confirmation Welcome Call — Terminal de paiement</div>';
+  html += '</td></tr>';
+
+  // Greeting
+  html += '<tr><td style="padding:28px 32px 0">';
+  html += '<p style="margin:0 0 14px;font-size:15px;font-weight:700;color:#1E293B">Bonjour ' + salut + ',</p>';
+  html += '<p style="margin:0 0 22px;font-size:13.5px;color:#475569;line-height:1.7">Suite à notre appel téléphonique, voici un récapitulatif des informations que nous avons validées ensemble concernant votre dossier' + (soc ? ' <strong>' + soc + '</strong>' : '') + ' :</p>';
+  html += '</td></tr>';
+
+  // Identification
+  html += '<tr><td style="padding:0 32px 20px">';
+  html += '<div style="background:' + CL + ';border-radius:10px;padding:18px 20px">';
+  html += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:' + C + ';margin-bottom:10px">Informations société</div>';
+  html += '<table width="100%" cellpadding="0" cellspacing="0">' + identRows + '</table>';
+  html += '</div></td></tr>';
+
+  // Terminal
+  html += '<tr><td style="padding:0 32px 20px">';
+  html += '<div style="background:' + CL + ';border-radius:10px;padding:18px 20px">';
+  html += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:' + C + ';margin-bottom:10px">Terminal de paiement</div>';
+  html += '<table width="100%" cellpadding="0" cellspacing="0">' + termRows + '</table>';
+  html += '</div></td></tr>';
+
+  // Services
+  html += '<tr><td style="padding:0 32px 24px">';
+  html += '<div style="background:' + CL + ';border-radius:10px;padding:18px 20px">';
+  html += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:' + C + ';margin-bottom:10px">Services activés</div>';
+  html += svcListHtml;
+  html += '</div></td></tr>';
+
+  // Note
+  html += '<tr><td style="padding:0 32px 28px">';
+  html += '<p style="margin:0;font-size:13px;color:#475569;line-height:1.6">Si l\'un de ces éléments ne correspond pas à ce qui a été convenu lors de notre échange, n\'hésitez pas à nous le signaler rapidement.</p>';
+  html += '</td></tr>';
+
+  // Footer
+  html += '<tr><td style="padding:20px 32px;border-top:1px solid #E2E8F0">';
+  html += '<p style="margin:0 0 4px;font-size:13px;color:#475569">Cordialement,</p>';
+  html += '<p style="margin:0;font-size:13px;font-weight:700;color:' + C + '">L\'équipe Inocrea</p>';
+  html += '</td></tr>';
+
+  html += '</table></td></tr></table></body></html>';
+  return html;
+}
+
+function openEmailPreview() {
+  const html = buildConfirmationEmailHTML();
+  const g = (key) => { if(D[key]&&D[key].edited&&D[key].v) return String(D[key].v).trim(); const e=document.getElementById('edit_'+key); return e&&e.value.trim()?e.value.trim():(D[key]?.v||''); };
+  const soc = g('societe') || 'dossier';
+  const emailTo = g('email') || '';
+
+  let modal = document.getElementById('emailPreviewModal');
+  if (modal) modal.remove();
+
+  modal = document.createElement('div');
+  modal.id = 'emailPreviewModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML =
+    '<div style="background:#fff;border-radius:14px;max-width:680px;width:100%;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.35)">' +
+      '<div style="background:#1A3A6B;color:#fff;padding:16px 22px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0">' +
+        '<div>' +
+          '<div style="font-weight:700;font-size:15px">Aperçu — Email de confirmation</div>' +
+          '<div style="font-size:12px;opacity:.75">' + soc + (emailTo ? ' — ' + emailTo : '') + '</div>' +
+        '</div>' +
+        '<span onclick="document.getElementById(\'emailPreviewModal\').remove()" style="cursor:pointer;font-size:24px;line-height:1;padding:4px 8px">×</span>' +
+      '</div>' +
+      '<div style="overflow-y:auto;flex:1;background:#e2e8f0;padding:16px">' +
+        '<iframe id="emailPreviewFrame" style="width:100%;height:680px;border:none;border-radius:8px;background:#fff" srcdoc="' + html.replace(/"/g,'&quot;') + '"></iframe>' +
+      '</div>' +
+      '<div style="padding:14px 22px;border-top:1px solid #E2E8F0;display:flex;gap:10px;justify-content:flex-end;background:#fff;flex-shrink:0">' +
+        '<button onclick="document.getElementById(\'emailPreviewModal\').remove()" style="background:#F1F5F9;color:#64748B;border:1.5px solid #E2E8F0;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Fermer</button>' +
+        '<button onclick="copyEmailPreviewHTML()" id="btnCopyEmail" style="background:#1A3A6B;color:#fff;border:none;padding:10px 22px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">📋 Copier l\'email</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(modal);
+  window._lastEmailHTML = html;
+}
+
+function copyEmailPreviewHTML() {
+  const html = window._lastEmailHTML || '';
+  if (!html) return;
+  const btn = document.getElementById('btnCopyEmail');
+  const doCopySuccess = function(){
+    if (btn) {
+      const orig = btn.textContent;
+      btn.textContent = '✅ Copié !';
+      setTimeout(function(){ btn.textContent = orig; }, 1800);
+    }
+  };
+  // Copie en texte enrichi (HTML) pour collage direct dans Outlook/Gmail
+  if (navigator.clipboard && window.ClipboardItem) {
+    const blobHtml = new Blob([html], {type: 'text/html'});
+    const blobText = new Blob([html.replace(/<[^>]+>/g, ' ').replace(/\s+/g,' ').trim()], {type: 'text/plain'});
+    navigator.clipboard.write([new ClipboardItem({'text/html': blobHtml, 'text/plain': blobText})])
+      .then(doCopySuccess)
+      .catch(function(){
+        navigator.clipboard.writeText(html).then(doCopySuccess);
+      });
+  } else if (navigator.clipboard) {
+    navigator.clipboard.writeText(html).then(doCopySuccess);
+  }
 }
 
 // ============================================================

@@ -466,19 +466,20 @@ let fileObj = null;
 function resetUploadScreen() {
   D = {}; ANOMALIES = []; ACTIONS = []; phase = 0;
   document.getElementById('dropZone').style.display = '';
-  
   var pv=document.getElementById('pdfViewer'); if(pv){ pv.src=''; pv.style.display='none'; }
   document.getElementById('imgViewer').src = '';
   document.getElementById('imgViewer').style.display = 'none';
-  document.getElementById('pdfName').textContent = 'Aucun document charge';
+  document.getElementById('pdfName').textContent = 'Aucun document chargé';
   var lz=document.getElementById('loaderZone'); if(lz){lz.style.display='none';lz.innerHTML='';}
   var az=document.getElementById('analysisZone'); if(az) az.innerHTML='';
   var tb=document.getElementById('testBtns'); if(tb) tb.style.display='none';
-  // Test buttons are static in HTML — analysisZone already cleared above
   const bb = document.getElementById('btnBack');
   if(bb) { bb.style.display = ''; bb.classList.add('hidden'); }
+  // ── Reset complet pdfCol ──
   const pc = document.getElementById('pdfCol');
-  if(pc){ pc.style.display=''; pc.style.width=''; pc.classList.remove('hidden'); }
+  if(pc) { pc.style.cssText = ''; pc.classList.remove('hidden'); }
+  // ── Reset input file ──
+  const fi = document.getElementById('fileInput'); if(fi) fi.value = '';
   document.getElementById('stp0').className = 'step active';
   document.getElementById('stp1').className = 'step';
 }
@@ -617,6 +618,14 @@ function startAnalysis(file) {
       // ── Correction page_cr_absente : si services_vaa détecté dans pages_ordre, forcer false ──
       if (Array.isArray(D.pages_ordre) && D.pages_ordre.includes('services_vaa')) {
         D.page_cr_absente = false;
+      }
+
+      // ── Détecter si contrat MarketPay ──
+      const _isMP = (D.modele?.v && (D.modele.v.includes('MarketPay') || D.modele.v.includes('A8500') || D.modele.v.includes('A8900'))) ||
+        (Array.isArray(D.pages_ordre) && (D.pages_ordre.includes('bon_inocrea_mp') || D.pages_ordre.includes('formulaire_mp') || D.pages_ordre.includes('ubo')));
+      if (_isMP) {
+        D._is_marketpay = true;
+        D.page_cr_absente = false; // pas de page services_vaa en MP
       }
 
       // ── Marquer durée en rouge si > 63 mois ──
@@ -802,22 +811,34 @@ RÈGLE CRITIQUE : La page chèques repas (Maaltijdcheques) est TOUJOURS physique
 - Si la colonne Qté est clairement vide → qte_manquante_worldline=true.
 - Si un chiffre est clairement lisible → les deux à false.
 
-═══ SECTION 10 — ORDRE DES PAGES (contrats Worldline/Inocrea uniquement) ═══
+═══ SECTION 10 — ORDRE DES PAGES ═══
 Identifie le type de chaque page dans l'ordre où elle apparaît dans le PDF et retourne la liste dans "pages_ordre".
 
-Types de pages :
+Types de pages WORLDLINE/Inocrea standard :
 - "bon_inocrea" : double logo Inocrea + Worldline, infos client, produits, IBAN, signature client
 - "bon_worldline" : entête Worldline seul, infos vendeur, facturation, site exploitation, IBAN
 - "bancontact" : Cartes de paiement avec Bancontact BOOST/abonnement/par transaction
 - "cartes_inter" : Cartes de paiement Visa/Mastercard internationales (Blended+/Interchange++)
 - "bon_terminal" : bon de commande DX8000 ou RX5000 Inocrea (C01602/C01603/C01615)
 - "services_vaa" : Services à valeur ajoutée (Backup mode, DCC, Chèques repas)
+
+Types de pages MARKETPAY :
+- "bon_inocrea_mp" : bon de commande Inocrea avec logo MarketPay (pas Worldline), avec abonnements INO-Basic/INO-Max/INO-Mobile et terminaux A8500/A8900
+- "formulaire_mp" : Formulaire d'abonnement services MarketPay (entête "MARKET PAY" + "FORMULAIRE D'ABONNEMENTS SERVICES" + PAYONSITE & TAP TO PAY). Ce document fait TOUJOURS 2 pages.
+- "ubo" : Formulaire de déclaration des bénéficiaires effectifs (UBO) — titre "Formulaire de déclaration des bénéficiaires effectifs"
+
+Types communs :
 - "rib" : relevé bancaire ou attestation IBAN
 - "ci_recto" : carte d'identité recto (avec photo de visage)
 - "ci_verso" : carte d'identité verso (MRZ, sans photo)
 - "autre" : tout autre document
 
-Ordre CORRECT Worldline : bon_inocrea → bon_worldline → bancontact → cartes_inter → bon_terminal → services_vaa → (puis rib/ci dans n'importe quel ordre)
+DÉTECTION DU TYPE DE CONTRAT :
+- Si le PDF contient un "bon_inocrea_mp" ou "formulaire_mp" → c'est un contrat MarketPay
+- Sinon → c'est un contrat Worldline standard
+
+Ordre CORRECT Worldline : bon_inocrea → bon_worldline → bancontact → cartes_inter → bon_terminal → services_vaa → (puis rib/ci libres)
+MarketPay : pas d'ordre obligatoire mais toutes les pages doivent être présentes.
 Retourner "pages_ordre" : tableau des types dans l'ordre réel du PDF.
 RECTO = face avec PHOTO DE VISAGE + nom, prénom, date naissance, date validité, numéro carte. PAS de MRZ.
 VERSO = face SANS photo, avec numéro registre national, code-barres, MRZ (3 lignes de chiffres/lettres type IDBEL...). PAS de photo de visage.
@@ -927,46 +948,45 @@ function detectAnomalies(d) {
   // sev: "red"/"orange" = anomalie contrat, "action" = action welcome call, "green" = conforme
   function add(sev, title, desc) { an.push({sev:sev, title:title, desc:desc}); }
 
-  // ── ORDRE DES PAGES ──
-  const CORRECT_ORDER = ['bon_inocrea','bon_worldline','bancontact','cartes_inter','bon_terminal','services_vaa'];
-  const DOCS_FREE = ['rib','ci_recto','ci_verso','autre'];
+  // ── Détecter type de contrat ──
+  const isMP = d._is_marketpay === true ||
+    (d.modele?.v && (d.modele.v.includes('MarketPay') || d.modele.v.includes('A8500') || d.modele.v.includes('A8900'))) ||
+    (Array.isArray(d.pages_ordre) && (d.pages_ordre.includes('bon_inocrea_mp') || d.pages_ordre.includes('formulaire_mp') || d.pages_ordre.includes('ubo')));
+
   const pages = Array.isArray(d.pages_ordre) ? d.pages_ordre : [];
-  if (pages.length > 0) {
-    // Extraire seulement les pages contractuelles (sans docs libres)
-    const contractPages = pages.filter(p => CORRECT_ORDER.includes(p));
-    // Vérifier l'ordre
-    let orderErrors = [];
-    let lastIdx = -1;
-    contractPages.forEach(function(p) {
-      const expectedIdx = CORRECT_ORDER.indexOf(p);
-      if (expectedIdx < lastIdx) {
-        const labels = {
-          bon_inocrea: 'Bon de commande Inocrea',
-          bon_worldline: 'Bon de commande Worldline',
-          bancontact: 'Cartes de paiement — Bancontact',
-          cartes_inter: 'Cartes de paiement — Cartes internationales',
-          bon_terminal: 'Bon de commande terminal (DX8000/RX5000)',
-          services_vaa: 'Services à valeur ajoutée'
-        };
-        orderErrors.push(labels[p] || p);
-      }
-      lastIdx = Math.max(lastIdx, expectedIdx);
-    });
-    // Vérifier pages manquantes
-    const missingPages = CORRECT_ORDER.filter(p => !contractPages.includes(p));
-    const missingLabels = {
-      bon_inocrea: 'Bon de commande Inocrea',
-      bon_worldline: 'Bon de commande Worldline',
-      bancontact: 'Cartes de paiement — Bancontact',
-      cartes_inter: 'Cartes de paiement — Cartes internationales',
-      bon_terminal: 'Bon de commande terminal (DX8000/RX5000)',
-      services_vaa: 'Services à valeur ajoutée'
-    };
-    if (missingPages.length > 0) {
-      add("orange", "Pages manquantes dans le dossier", "Pages absentes : " + missingPages.map(p=>missingLabels[p]).join(', ') + ".");
+
+  if (isMP) {
+    // ══ VÉRIFICATIONS MARKETPAY ══
+    // Pages obligatoires MarketPay
+    if (pages.length > 0) {
+      if (!pages.includes('bon_inocrea_mp')) add("red", "Bon de commande Inocrea MarketPay manquant", "Le bon de commande Inocrea (logo MarketPay) est absent du dossier.");
+      const nbFormMP = pages.filter(p=>p==='formulaire_mp').length;
+      if (nbFormMP === 0) add("red", "Formulaire abonnement MarketPay manquant", "Le formulaire d'abonnement services MarketPay (2 pages) est absent du dossier.");
+      else if (nbFormMP < 2) add("orange", "Formulaire abonnement MarketPay incomplet", "Le formulaire MarketPay fait 2 pages — seulement " + nbFormMP + " page détectée. Vérifier que les 2 pages sont bien incluses.");
+      if (!pages.includes('ubo')) add("red", "Formulaire UBO manquant", "Le formulaire de déclaration des bénéficiaires effectifs (UBO) est obligatoire pour MarketPay.");
+      if (!pages.includes('rib')) add("red", "RIB manquant", "Aucun RIB trouvé. Document obligatoire.");
+      if (!pages.includes('ci_recto')) add("red", "Carte d'identité recto manquante", "La carte d'identité recto est absente.");
+      if (!pages.includes('ci_verso')) add("red", "Carte d'identité verso manquante", "La carte d'identité verso est absente.");
     }
-    if (orderErrors.length > 0) {
-      add("orange", "Ordre des pages incorrect", "Pages mal positionnées : " + orderErrors.join(', ') + ". Ordre correct : Bon Inocrea → Bon Worldline → Bancontact → Cartes inter → Bon terminal → Services VAA.");
+  } else {
+    // ══ VÉRIFICATIONS WORLDLINE ══
+    const CORRECT_ORDER = ['bon_inocrea','bon_worldline','bancontact','cartes_inter','bon_terminal','services_vaa'];
+    const pageLabels = {
+      bon_inocrea: 'Bon de commande Inocrea', bon_worldline: 'Bon de commande Worldline',
+      bancontact: 'Cartes de paiement — Bancontact', cartes_inter: 'Cartes de paiement — Cartes internationales',
+      bon_terminal: 'Bon de commande terminal (DX8000/RX5000)', services_vaa: 'Services à valeur ajoutée'
+    };
+    if (pages.length > 0) {
+      const contractPages = pages.filter(p => CORRECT_ORDER.includes(p));
+      let orderErrors = [], lastIdx = -1;
+      contractPages.forEach(function(p) {
+        const expectedIdx = CORRECT_ORDER.indexOf(p);
+        if (expectedIdx < lastIdx) orderErrors.push(pageLabels[p]||p);
+        lastIdx = Math.max(lastIdx, expectedIdx);
+      });
+      const missingPages = CORRECT_ORDER.filter(p => !contractPages.includes(p));
+      if (missingPages.length > 0) add("orange", "Pages manquantes dans le dossier", "Pages absentes : " + missingPages.map(p=>pageLabels[p]).join(', ') + ".");
+      if (orderErrors.length > 0) add("orange", "Ordre des pages incorrect", "Pages mal positionnées : " + orderErrors.join(', ') + ". Ordre correct : Bon Inocrea → Bon Worldline → Bancontact → Cartes inter → Bon terminal → Services VAA.");
     }
   }
 
@@ -1038,28 +1058,42 @@ function detectAnomalies(d) {
   }
 
   // ── QUANTITÉS ──
-  if (d.qte_manquante_inocrea === true || (d.nb && String(d.nb?.v) === '0')) {
-    add("red", "Quantité manquante (bon Inocrea)", "Le terminal est sélectionné mais la colonne Qté est vide sur le bon Inocrea. Worldline peut refuser le dossier.");
-  }
-  if (d.qte_manquante_worldline === true) {
-    add("red", "Quantité manquante (bon Worldline)", "Le kit est sélectionné mais la colonne Qté est vide sur le bon Worldline. Une quantité est obligatoire.");
-  }
-  if (d.qte_illisible_worldline === true) {
-    add("orange", "Quantité illisible (bon Worldline)", "La colonne Qté semble renseignée mais n'est pas clairement lisible. Reconfirmer avec le commercial.");
+  // ── QUANTITÉS (Worldline seulement) ──
+  if (!isMP) {
+    if (d.qte_manquante_inocrea === true || (d.nb && String(d.nb?.v) === '0')) {
+      add("red", "Quantité manquante (bon Inocrea)", "Le terminal est sélectionné mais la colonne Qté est vide sur le bon Inocrea. Worldline peut refuser le dossier.");
+    }
+    if (d.qte_manquante_worldline === true) {
+      add("red", "Quantité manquante (bon Worldline)", "Le kit est sélectionné mais la colonne Qté est vide sur le bon Worldline. Une quantité est obligatoire.");
+    }
+    if (d.qte_illisible_worldline === true) {
+      add("orange", "Quantité illisible (bon Worldline)", "La colonne Qté semble renseignée mais n'est pas clairement lisible. Reconfirmer avec le commercial.");
+    }
   }
 
-  // ── DURÉE MAXIMALE ──
-  const duree = parseInt(String(d.duree_mois?.v||'0').replace(/[^0-9]/g,'')) || 0;
-  const nbreLoyers = parseInt(String(d.nbre_loyers?.v||'0').replace(/[^0-9]/g,'')) || 0;
-  const dureeEffective = duree || (nbreLoyers * 3);
-  if (dureeEffective > 63 && dureeEffective > 0) {
-    add("red", "Durée invalide : " + dureeEffective + " mois", "La durée maximale autorisée est de 63 mois (21 loyers trimestriels). Ce contrat indique " + dureeEffective + " mois — retourner au commercial pour corriger la durée, le loyer HTVA, la TVA et le loyer TTC.");
+  // ── DURÉE MAXIMALE (Worldline seulement) ──
+  if (!isMP) {
+    const duree = parseInt(String(d.duree_mois?.v||'0').replace(/[^0-9]/g,'')) || 0;
+    const nbreLoyers = parseInt(String(d.nbre_loyers?.v||'0').replace(/[^0-9]/g,'')) || 0;
+    const dureeEffective = duree || (nbreLoyers * 3);
+    if (dureeEffective > 63 && dureeEffective > 0) {
+      add("red", "Durée invalide : " + dureeEffective + " mois", "La durée maximale autorisée est de 63 mois (21 loyers trimestriels). Ce contrat indique " + dureeEffective + " mois — retourner au commercial pour corriger la durée, le loyer HTVA, la TVA et le loyer TTC.");
+    }
   }
 
   // ── CONNECTIVITÉ ──
-  if (!d.connect?.v || d.connect.v.trim() === "") {
-    var connOpts = (d.modele&&d.modele.v==="RX5000") ? "WiFi ou Ethernet" : (d.modele&&d.modele.v&&d.modele.v.includes("Yomani")) ? "Ethernet" : "WiFi ou 4G";
-    add("red", "Connectivité non cochée", "La connectivité doit être indiquée au contrat ("+connOpts+").");
+  if (isMP) {
+    // MarketPay : toujours une action à confirmer, jamais rouge
+    if (d.connect?.v && d.connect.v.trim()) {
+      add("action", "Confirmer la connectivité avec le client", "Le contrat indique \"" + d.connect.v + "\" — reconfirmer avec le client que c'est bien la connectivité souhaitée.");
+    } else {
+      add("action", "Connectivité à confirmer", "La connectivité n'est pas renseignée dans le contrat — confirmer avec le client (WiFi, 4G, Ethernet...).");
+    }
+  } else {
+    if (!d.connect?.v || d.connect.v.trim() === "") {
+      var connOpts = (d.modele&&d.modele.v==="RX5000") ? "WiFi ou Ethernet" : (d.modele&&d.modele.v&&d.modele.v.includes("Yomani")) ? "Ethernet" : "WiFi ou 4G";
+      add("red", "Connectivité non cochée", "La connectivité doit être indiquée au contrat ("+connOpts+").");
+    }
   }
 
   // ── EMAIL ──
@@ -1070,21 +1104,21 @@ function detectAnomalies(d) {
     add("red", "Email invalide", "L'adresse email semble incorrecte : " + d.email.v);
   }
 
-  // ── BANCONTACT PAR TRANSACTION ──
-  if (d.bancontact_par_transaction === true) {
+  // ── BANCONTACT PAR TRANSACTION (Worldline seulement) ──
+  if (!isMP && d.bancontact_par_transaction === true) {
     add("orange", "Bancontact par transaction — code 120 requis", "Les sections Bancontact BOOST et abonnement sont barrées. Le client est en Bancontact par transaction. Ajouter le code \"AlnocreaD120\" dans le champ prévu sur le bon Worldline." + (d.bancontact_tarif ? " Tarif lu : " + d.bancontact_tarif + " par transaction." : ""));
   }
 
-  // ── PAGE SERVICES / CHÈQUES REPAS ──
-  if (d.page_cr_absente === true) {
+  // ── PAGE SERVICES / CHÈQUES REPAS (Worldline seulement) ──
+  if (!isMP && d.page_cr_absente === true) {
     add("orange", "Page Services à valeur ajoutée absente", "La page 'Services à valeur ajoutée' (Backup mode, DCC, Chèques repas) n'est pas dans le dossier. Le commercial doit la fournir.");
     add("action", "Confirmer services additionnels", "La page Services à valeur ajoutée est absente — demander au client s'il souhaite Backup mode, DCC ou chèques repas.");
   }
 
-  // ── MarketPay ──
-  if (d.modele?.v && (d.modele.v === 'MarketPay PAX A8500 + Q25' || d.modele.v === 'MarketPay PAX A8900')) {
+  // ── MarketPay — vérifications spécifiques ──
+  if (isMP) {
     if (!d.abonnement?.v || d.abonnement.v.trim() === '') {
-      add("orange", "Abonnement MarketPay non renseigné", "Le plan d'abonnement (INO-Mobile, INO-Basic, INO-Max) doit être coché.");
+      add("orange", "Abonnement MarketPay non renseigné", "Le plan d'abonnement (INO-Mobile, INO-Basic, INO-Max) doit être coché sur le bon de commande.");
     }
     if (d.svc_cr === "oui") add("red", "MarketPay: chèques-repas incompatibles", "Le MarketPay ne supporte pas les chèques-repas.");
     if (d.svc_ores === "oui") add("red", "MarketPay: ORES incompatible", "Le MarketPay ne supporte pas ORES.");
@@ -1093,8 +1127,8 @@ function detectAnomalies(d) {
     if (d.svc_pad === "oui") add("red", "MarketPay: Paiement distance incompatible", "Le MarketPay ne supporte pas le paiement à distance.");
   }
 
-  // ── Services DX/RX ──
-  if (d.modele?.v === "DX8000" || d.modele?.v === "RX5000") {
+  // ── Services DX/RX (Worldline) ──
+  if (!isMP && (d.modele?.v === "DX8000" || d.modele?.v === "RX5000")) {
     if (d.svc_ores === "oui") add("red", "ORES non disponible", "ORES n'est disponible que sur le Yomani Double Module.");
     if (d.svc_barra === "oui") add("red", "Barracuda non disponible", "Barracuda n'est disponible que sur le Yomani Double Module.");
     if (d.svc_eid === "oui") add("red", "Lecteur ID non disponible", "Le lecteur ID n'est disponible que sur le Yomani Double Module.");
@@ -1117,21 +1151,37 @@ function detectAnomalies(d) {
     add("action", "Reconfirmer adresse de livraison", "L'adresse de livraison est peu lisible — reconfirmer avec le client pendant l'appel.");
   }
 
-  // ── RIB ──
-  if (d.doc_rib_present === false) {
-    add("red", "RIB manquant", "Aucun RIB trouvé. Document obligatoire.");
-  } else if (d.doc_rib_present === true) {
-    if (!d.doc_rib_banque) add("orange", "RIB: banque non visible", "Le nom de la banque doit apparaître sur le document.");
-    if (d.doc_rib_iban_match === false) add("red", "RIB: IBAN ne correspond pas", "L'IBAN du RIB ne correspond pas au contrat.");
-    if (d.doc_rib_ok) add("green", "RIB conforme", "Banque " + (d.doc_rib_banque||"") + ", société " + (d.doc_rib_societe||"") + ", IBAN vérifié.");
+  // ── RIB (Worldline seulement — MarketPay déjà géré via pages_ordre) ──
+  if (!isMP) {
+    if (d.doc_rib_present === false) {
+      add("red", "RIB manquant", "Aucun RIB trouvé. Document obligatoire.");
+    } else if (d.doc_rib_present === true) {
+      if (!d.doc_rib_banque) add("orange", "RIB: banque non visible", "Le nom de la banque doit apparaître sur le document.");
+      if (d.doc_rib_iban_match === false) add("red", "RIB: IBAN ne correspond pas", "L'IBAN du RIB ne correspond pas au contrat.");
+      if (d.doc_rib_ok) add("green", "RIB conforme", "Banque " + (d.doc_rib_banque||"") + ", société " + (d.doc_rib_societe||"") + ", IBAN vérifié.");
+    }
+  } else {
+    // MarketPay : RIB vérifié via pages_ordre, mais on vérifie quand même la concordance IBAN
+    if (d.doc_rib_present === true) {
+      if (d.doc_rib_iban_match === false) add("red", "RIB: IBAN ne correspond pas", "L'IBAN du RIB ne correspond pas au contrat.");
+      if (d.doc_rib_ok) add("green", "RIB conforme", "Banque " + (d.doc_rib_banque||"") + ", IBAN vérifié.");
+    }
   }
 
   // ── CI ──
-  if (d.doc_ci_recto === false) add("red", "Carte d'identité recto manquante", "La carte d'identité recto est absente.");
-  if (d.doc_ci_verso === false) add("red", "Carte d'identité verso manquante", "La carte d'identité verso est absente.");
-  if (d.doc_ci_couleur === false) add("red", "Carte d'identité en noir et blanc", "La carte d'identité doit être en couleur.");
-  if (d.doc_ci_valide === false && (d.doc_ci_recto || d.doc_ci_verso)) add("red", "Carte d'identité expirée", "Document expiré. Le client doit fournir une carte valide.");
-  if (d.doc_ci_qualite === "low" && (d.doc_ci_recto || d.doc_ci_verso)) add("orange", "Carte d'identité: qualité insuffisante", "Photo floue ou illisible.");
+  // Bug fix : n'afficher "N&B" que si la CI est présente mais en N&B, pas si elle est absente
+  const ciPresente = d.doc_ci_recto === true || d.doc_ci_verso === true;
+  if (!isMP) {
+    // Worldline : vérifications complètes CI
+    if (d.doc_ci_recto === false) add("red", "Carte d'identité recto manquante", "La carte d'identité recto est absente.");
+    if (d.doc_ci_verso === false) add("red", "Carte d'identité verso manquante", "La carte d'identité verso est absente.");
+  }
+  // Couleur : uniquement si CI présente mais N&B (applicable Worldline ET MarketPay)
+  if (ciPresente && d.doc_ci_couleur === false) {
+    add("red", "Carte d'identité en noir et blanc", "La carte d'identité doit être en couleur.");
+  }
+  if (d.doc_ci_valide === false && ciPresente) add("red", "Carte d'identité expirée", "Document expiré. Le client doit fournir une carte valide.");
+  if (d.doc_ci_qualite === "low" && ciPresente) add("orange", "Carte d'identité: qualité insuffisante", "Photo floue ou illisible.");
   if (d.doc_ci_recto && d.doc_ci_verso && d.doc_ci_couleur && d.doc_ci_valide && d.doc_ci_qualite !== "low") {
     add("green", "Carte d'identité conforme", "Recto/verso couleur, valide jusqu'au " + (d.doc_ci_validite||"?"));
   }
@@ -2772,7 +2822,7 @@ function resetAll() {
   phase = 0;
   D = {}; ANOMALIES = []; ACTIONS = [];
   window.D_ORIG = {};
-  document.getElementById('step2').style.display = 'none';
+  document.getElementById('step2').style.cssText = 'display:none';
   document.getElementById('step3').style.display = 'none';
   document.getElementById('step1').style.display = '';
   document.getElementById('recapContent').innerHTML = '';
@@ -2783,11 +2833,16 @@ function resetAll() {
   document.getElementById('stp2').className = 'step';
   var bnav = document.querySelector('.bnav'); if(bnav) bnav.style.display = '';
   var _b = document.getElementById('btnBack'); if(_b) _b.classList.add('hidden');
+  var _n = document.getElementById('btnNext'); if(_n) { _n.classList.remove('hidden'); _n.textContent = 'Démarrer l\'appel →'; }
   var _p = document.getElementById('btnPDF'); if(_p) _p.classList.add('hidden');
   var _pe = document.getElementById('btnEmail'); if(_pe) _pe.classList.add('hidden');
   var _r = document.getElementById('btnReset'); if(_r) _r.classList.add('hidden');
   var rc = document.querySelector('.right-col'); if(rc) rc.classList.remove('full-width');
-  var pc = document.getElementById('pdfCol'); if(pc){ pc.style.display=''; pc.style.width=''; pc.classList.remove('hidden'); }
+  // ── Reset complet du pdfCol — nettoyer tous les styles posés en phase trame ──
+  var pc = document.getElementById('pdfCol');
+  if(pc) { pc.style.cssText = ''; pc.classList.remove('hidden'); }
+  // ── Reset input file pour permettre de resélectionner le même fichier ──
+  var fi = document.getElementById('fileInput'); if(fi) fi.value = '';
   resetUploadScreen();
 }
 

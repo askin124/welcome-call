@@ -3332,6 +3332,7 @@ function goNext() {
     const pc3=document.getElementById('pdfCol');
     if(pc3){pc3.style.display='none';pc3.style.width='0';}
     buildRecap();
+    saveAnalysisToKV('welcome-call');
     document.getElementById('stp1').className='step done';
     document.getElementById('stp2').className='step active';
     { var _e=document.getElementById('btnNext');if(_e)_e.classList.add('hidden'); };
@@ -3390,6 +3391,38 @@ function goBack() {
 // ============================================================
 // PDF GENERATION
 // ============================================================
+// ============================================================
+// SAUVEGARDE KV — Dashboard analytics
+// ============================================================
+async function saveAnalysisToKV(source) {
+  try {
+    const redCount = ANOMALIES.filter(a=>a.sev==='red').length;
+    const orangeCount = ANOMALIES.filter(a=>a.sev==='orange').length;
+    const statut = redCount > 0 ? 'bloquant' : orangeCount > 0 ? 'a_corriger' : 'conforme';
+    const payload = {
+      source: source || 'welcome-call',
+      commercial: D.commercial?.v || '',
+      societe: D.societe?.v || '',
+      bce: D.bce?.v || '',
+      modele: D.modele?.v || '',
+      location_type: D.location_type?.v || '',
+      duree_mois: D.duree_mois?.v || '',
+      anomalies: ANOMALIES.filter(a=>a.sev==='red'||a.sev==='orange').map(a=>({sev:a.sev,title:a.title})),
+      actions: ANOMALIES.filter(a=>a.sev==='action').map(a=>({title:a.title})),
+      statut,
+      nb_red: redCount,
+      nb_orange: orangeCount,
+    };
+    await fetch('https://quiet-bonus-454e.olivierdubost.workers.dev/save-analysis', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+  } catch(e) {
+    console.warn('KV save failed (non-bloquant):', e.message);
+  }
+}
+
 function genPDF() {
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
